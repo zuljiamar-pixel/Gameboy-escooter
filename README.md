@@ -15,8 +15,10 @@ geschrieben in CircuitPython.
 
 | Knopf | Funktion |
 |---|---|
-| **A** | Gas geben – zieht das Vorderrad hoch (Wheelie) |
-| **B** | Bremsen – drückt das Vorderrad wieder runter |
+| **OBEN** (Steuerkreuz) | Wheelie-Mode an – das Vorderrad geht hoch |
+| **OBEN** nochmal | sauber landen – der Wheelie wird gezählt |
+| **A** | Gas geben (bis 100 km/h), im Wheelie: Vorderrad höher |
+| **B** | Bremsen, im Wheelie: Vorderrad runter |
 | **START** | Pause |
 | **SELECT** | Ton an/aus |
 | **RUNTER** (Steuerkreuz) | Bilder pro Sekunde (FPS) anzeigen |
@@ -24,16 +26,17 @@ geschrieben in CircuitPython.
 
 ## So geht das Spiel
 
-* Der Scooter rollt von allein mit 18 km/h. Mit **A** gibst du Gas (bis 30 km/h)
-  und das Vorderrad geht hoch.
-* Wenn du A die ganze Zeit hältst, **kippst du nach hinten um**. Tipp A also
-  immer wieder kurz an, damit du in der Balance bleibst.
-* Kommst du zu weit hoch, rettet dich **B** (Bremse): Das Vorderrad geht runter.
+* Der Scooter rollt von allein mit 25 km/h. Mit **A** gibst du Gas, bis zu
+  **100 km/h**.
+* Drück **OBEN**: Du bist im **Wheelie-Mode** und das Vorderrad geht hoch.
+* Jetzt musst du die **Balance halten**: Tipp **A** an, damit das Vorderrad
+  oben bleibt. Kommst du zu weit hoch, drück **B**. Hältst du A die ganze
+  Zeit, **kippst du nach hinten um**.
 * Die **Anzeige oben** zeigt deinen Winkel: grün = sicher, gelb = Balance,
   rot = gleich kippst du um.
-* Setzt das Vorderrad wieder auf, wird die Wheelie-Strecke in **Metern**
-  gezählt. Ist sie länger als dein bisheriger Rekord, gibt es einen
-  **NEUEN REKORD!**
+* Drück nochmal **OBEN**, dann landest du sauber. Die Wheelie-Strecke wird in
+  **Metern** gezählt. Ist sie länger als dein bisheriger Rekord, gibt es einen
+  **NEUEN REKORD!** Fällt das Vorderrad von selbst runter, zählt es auch.
 * Wenn du nach hinten umkippst, **zählt der Wheelie nicht**.
 * Pass auf die **Gullydeckel** auf, die schütteln dich durch.
 * Dein Rekord bleibt gespeichert, auch wenn du den PyBadge ausschaltest.

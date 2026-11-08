@@ -27,7 +27,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.join(HERE, "..", "code.py")
 
-B, A, START, SELECT, DOWN = 0, 1, 2, 3, 5
+B, A, START, SELECT, DOWN, UP = 0, 1, 2, 3, 5, 6
 
 
 # ------------------------------------------------------------------
@@ -182,7 +182,7 @@ def balance_bot(target_deg, land_after=None):
         th = math.degrees(g.th)
         om = math.degrees(g.om)
         if land_after is not None and state["t"] > land_after:
-            return [B] if g.th > 0 else []
+            return [UP] if state["t"] < land_after + 0.1 else []
         if th + om * 0.25 < target_deg:
             return [A]
         if th + om * 0.25 > target_deg + 10:
@@ -206,25 +206,37 @@ def main():
     r.run(0.1, keys=[])
     assert g.state == m.PLAY, "A startet das Spiel"
 
-    # Wheelie halten und sauber mit der Bremse landen
+    # A gibt nur Gas: kein Wheelie, aber schnell
+    r.run(3.0, keys=[A])
+    assert g.th == 0 and not g.in_wheelie, "A allein hebt das Vorderrad nicht"
+    print("Nach 3 s Gas: %.0f km/h" % (g.v * 3.6))
+    r.run(1.0, keys=[])
+
+    # OBEN = Wheelie-Mode, mit A/B balancieren, nochmal OBEN = landen
+    r.run(0.1, keys=[UP])
     r.run(3.0, controller=balance_bot(30))
     r.shot("2_wheelie.png")
     print("Wheelie: %.1f m, Winkel %.1f°, %.1f km/h" % (g.wd, math.degrees(g.th), g.v * 3.6))
-    assert g.in_wheelie and g.state == m.PLAY
+    assert g.in_wheelie and g.wmode and g.state == m.PLAY
     r.run(3.0, controller=balance_bot(30, land_after=2.0))
     r.run(0.4, keys=[])
     r.shot("3_ergebnis.png")
-    assert not g.in_wheelie
+    assert not g.in_wheelie and not g.wmode
     assert g.store.best > 5, g.store.best
     saved = m.struct.unpack("<f", bytes(r.micro.nvm[4:8]))[0]
     assert abs(saved - g.store.best) < 0.01, "Rekord im nvm gespeichert"
     print("Rekord: %.1f m (im nvm: %.1f m)" % (g.store.best, saved))
 
-    # Weiterfahren, dann A festhalten -> Überschlag
-    r.run(1.5, keys=[])
+    # Ohne Gas im Wheelie-Mode fällt das Vorderrad runter und der Mode endet
+    r.run(0.1, keys=[UP])
+    r.run(2.5, keys=[])
+    assert not g.wmode and g.th == 0 and g.state == m.PLAY
+
+    # Wheelie-Mode + A festhalten -> Überschlag
+    r.run(0.1, keys=[UP])
     r.run(4.0, keys=[A])
     r.shot("4_sturz.png")
-    assert g.state == m.CRASH, "Dauer-Gas kippt nach hinten"
+    assert g.state == m.CRASH, "Dauer-Gas im Wheelie kippt nach hinten"
     best_before = g.store.best
     r.run(1.0, keys=[])
     r.shot("5_nochmal.png")
@@ -232,6 +244,13 @@ def main():
     r.run(0.1, keys=[A])
     r.run(0.1, keys=[])
     assert g.state == m.PLAY
+
+    # Vollgas: 100 km/h
+    r.run(12.0, keys=[A], record_every=6)
+    print("Vollgas: %.0f km/h" % (g.v * 3.6))
+    assert g.v * 3.6 > 99 and g.l_speed.text == "100 KM/H", g.l_speed.text
+    r.shot("7_vollgas.png")
+    r.run(0.5, keys=[])
 
     # Pause
     r.run(0.1, keys=[START])

@@ -1,14 +1,15 @@
 # E-SCOOTER WHEELIE - ein kleines Spiel für den Adafruit PyBadge (CircuitPython)
 #
-#   A      = Gas geben / Wheelie ziehen
-#   B      = Bremsen (drückt das Vorderrad wieder runter)
+#   OBEN   = Wheelie-Mode an (Vorderrad hoch) / nochmal OBEN = sauber landen
+#   A      = Gas geben (bis 100 km/h), im Wheelie: Vorderrad höher
+#   B      = Bremsen, im Wheelie: Vorderrad runter
 #   START  = Pause
 #   SELECT = Ton an/aus
 #   RUNTER = Bilder pro Sekunde anzeigen (FPS)
 #
-# Ziel: Fahr einen möglichst langen Wheelie! Wenn das Vorderrad wieder
-# sauber aufsetzt, wird die Strecke gezählt. Kippst du nach hinten um,
-# zählt der Wheelie nicht. Dein Rekord bleibt auch nach dem Ausschalten
+# Ziel: Fahr einen möglichst langen Wheelie! Im Wheelie-Mode musst du mit
+# A und B die Balance halten. Wenn das Vorderrad wieder aufsetzt, wird die
+# Strecke gezählt. Kippst du nach hinten um, zählt der Wheelie nicht. Dein Rekord bleibt auch nach dem Ausschalten
 # gespeichert. Rekord löschen: im Startbildschirm START 3 Sekunden halten.
 #
 # Installation: Diese Datei als "code.py" auf das Laufwerk CIRCUITPY
@@ -32,17 +33,21 @@ except ImportError:
 # ------------------------------------------------------------------
 # EINSTELLUNGEN - hier kannst du das Spiel leichter/schwerer machen
 # ------------------------------------------------------------------
-MAX_SPEED_KMH = 30    # Höchstgeschwindigkeit mit Gas (A)
-CRUISE_KMH = 18       # so schnell rollt der Scooter von allein
-ACCEL = 3.0           # Beschleunigung mit A (m/s²)
-CRUISE_ACCEL = 2.0    # Beschleunigung von allein bis CRUISE_KMH (m/s²)
-BRAKE_DECEL = 4.0     # Bremsen mit B (m/s²), im Wheelie schwächer
+MAX_SPEED_KMH = 100   # Höchstgeschwindigkeit mit Gas (A)
+CRUISE_KMH = 25       # so schnell rollt der Scooter von allein
+ACCEL = 6.0           # Beschleunigung mit A (m/s²), wird oben raus schwächer
+CRUISE_ACCEL = 3.0    # Beschleunigung von allein bis CRUISE_KMH (m/s²)
+COAST_DECEL = 1.5     # so schnell wird er ohne Gas wieder langsamer (m/s²)
+BRAKE_DECEL = 7.0     # Bremsen mit B (m/s²), im Wheelie schwächer
+POP = 1.8             # wie kräftig OBEN das Vorderrad hochreißt
 BALANCE_DEG = 42      # Gleichgewichtspunkt des Wheelies (Grad)
 CRASH_DEG = 68        # ab hier kippst du nach hinten um (Grad)
 GRAVITY = 4.0         # wie stark das Vorderrad nach unten will
 LIFT = 6.5            # wie stark A das Vorderrad hochzieht
 BRAKE_TORQUE = 6.0    # wie stark B das Vorderrad runterdrückt
 DAMPING = 1.8         # Dämpfung (höher = gutmütiger)
+LAND_TORQUE = 5.0     # sanftes Landen mit nochmal OBEN
+LAND_SPEED = 1.6      # so schnell senkt sich das Vorderrad beim Landen (rad/s)
 BUMPS = True          # Gullydeckel, die dich durchschütteln
 MIN_WHEELIE = 0.5     # so viele Meter muss ein Wheelie mindestens haben
 
@@ -65,7 +70,7 @@ CRASH_RAD = math.radians(CRASH_DEG)
 LEAN = 0.5                    # Fahrer lehnt sich nur halb so weit zurück
 PROP_PERIOD = 240             # Abstand, in dem sich Laternen/Bäume wiederholen
 
-BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_DOWN = 1, 2, 4, 8, 32
+BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_DOWN, BTN_UP = 1, 2, 4, 8, 32, 64
 
 TITLE, PLAY, PAUSE, CRASH = 0, 1, 2, 3
 
@@ -569,12 +574,13 @@ def make_background():
     return displayio.TileGrid(bmp, pixel_shader=make_palette(BG_COLORS))
 
 
-def make_strip(h, color, w_on, y):
+def make_strip(period, h, color, w_on, y):
     """Schmaler, endlos scrollender Streifen (Gehwegfugen, Mittelstreifen)."""
-    bmp = displayio.Bitmap(24, h, 2)
+    bmp = displayio.Bitmap(period, h, 2)
     rect(bmp, 0, 0, w_on, h, 1)
     return displayio.TileGrid(bmp, pixel_shader=make_palette((0, color), True),
-                              width=8, height=1, tile_width=24, tile_height=h, y=y)
+                              width=W // period + 2, height=1, tile_width=period,
+                              tile_height=h, y=y)
 
 
 def make_lamp():
@@ -630,8 +636,8 @@ class Game:
             display.show(self.root)
 
         self.world.append(make_background())
-        self.seams = make_strip(6, 0x8E8E99, 1, 98)
-        self.dashes = make_strip(2, 0xEDEDED, 12, 124)
+        self.seams = make_strip(32, 6, 0x8E8E99, 1, 98)
+        self.dashes = make_strip(96, 2, 0xEDEDED, 48, 124)
         self.world.append(self.seams)
         self.world.append(self.dashes)
         self.props = []
@@ -696,6 +702,8 @@ class Game:
         self.om = 0.0           # Drehgeschwindigkeit (rad/s)
         self.s = 0.0            # gefahrene Strecke (m)
         self.in_wheelie = False
+        self.wmode = False      # Wheelie-Mode an (mit OBEN)
+        self.landing = False    # nochmal OBEN gedrückt: sanft landen
         self.wd = 0.0           # Wheelie-Strecke (m)
         self.wt = 0.0           # Wheelie-Zeit (s)
         self.hud_t = 1.0
@@ -715,7 +723,6 @@ class Game:
             l.hide()
         self.l_title1.set("E-SCOOTER", 80, 3, 1)
         self.l_title2.set("WHEELIE", 80, 20, 1)
-        self.l_help.set("A = GAS   B = BREMSE", 80, 48, 1)
 
     def start_game(self):
         self.state = PLAY
@@ -724,6 +731,7 @@ class Game:
         self.reset_ride()
         random.seed(time.monotonic_ns() % 1000003)   # Gullydeckel jedes Mal anders
         self.sound.play(((523, 0.07), (784, 0.1)))
+        self.toast("OBEN = WHEELIE")
 
     def toast(self, text):
         self.l_toast.set(text, 157, 118, 2)
@@ -776,6 +784,8 @@ class Game:
 
     def update_title(self, dt):
         b = self.btn
+        self.l_help.set("OBEN = WHEELIE AN/AUS" if int(self.t / 2) % 2 else
+                        "A = GAS   B = BREMSE", 80, 48, 1)
         if b.held & BTN_START:
             # START gedrückt halten = Rekord löschen
             if self.start_hold < 0:
@@ -807,18 +817,24 @@ class Game:
         if brake:
             v -= BRAKE_DECEL * dt * (0.4 if self.th > 0 else 1.0)
         elif gas:
-            v += ACCEL * dt
+            f = v / VMAX
+            v += ACCEL * dt * (1 - 0.6 * f * f)        # oben raus zieht er weniger
         elif v < CRUISE:
             v = min(CRUISE, v + CRUISE_ACCEL * dt)     # rollt von allein
         else:
-            v = max(CRUISE, v - 0.8 * dt)
+            v = max(CRUISE, v - COAST_DECEL * dt)
         self.v = min(max(v, 0.0), VMAX)
         a = -GRAVITY * math.cos(PHI0 + self.th) - DAMPING * self.om
-        if gas:
-            a += LIFT * min(1.0, self.v / 2.0)
-        if brake and self.th > 0:
-            a -= BRAKE_TORQUE
+        if self.landing:
+            a -= LAND_TORQUE
+        elif self.wmode:
+            if gas:
+                a += LIFT * min(1.0, self.v / 2.0)
+            if brake and self.th > 0:
+                a -= BRAKE_TORQUE
         self.om += a * dt
+        if self.landing and self.om < -LAND_SPEED:
+            self.om = -LAND_SPEED
         self.th += self.om * dt
         self.s += self.v * dt
         if self.th <= 0:
@@ -829,6 +845,15 @@ class Game:
         return False
 
     def update_play(self, dt, gas, brake):
+        if self.btn.pressed & BTN_UP:
+            if not self.wmode:
+                self.wmode = True          # Wheelie-Mode an: Vorderrad hochreißen
+                self.landing = False
+                self.om += POP
+            elif self.th > 0:
+                self.landing = True        # nochmal OBEN: sanft landen
+            else:
+                self.wmode = False
         landed = False
         s_before = self.s
         steps = int(dt / 0.01) + 1
@@ -847,8 +872,11 @@ class Game:
         if self.th >= CRASH_RAD:
             self.crash()
             return
-        if landed and self.in_wheelie:
-            self.end_wheelie()
+        if landed:
+            self.wmode = False
+            self.landing = False
+            if self.in_wheelie:
+                self.end_wheelie()
         self.update_bumps(s_before)
         if self.result_t > 0:
             self.result_t -= dt
@@ -890,14 +918,16 @@ class Game:
             self.sound.play(((523, 0.09), (659, 0.09), (784, 0.09), (1047, 0.25)))
         else:
             d = self.wd
-            word = ("OK!" if d < 5 else "NICE!" if d < 15 else "STARK!" if d < 30 else
-                    "MEGA!" if d < 60 else "WAHNSINN!" if d < 120 else "LEGENDE!")
+            word = ("OK!" if d < 10 else "NICE!" if d < 30 else "STARK!" if d < 80 else
+                    "MEGA!" if d < 200 else "WAHNSINN!" if d < 500 else "LEGENDE!")
             self.l_sub.set("%s  %.1f S" % (word, self.wt), 80, 33, 1)
             self.sound.play(((880, 0.06), (1175, 0.1)))
 
     def crash(self):
         self.state = CRASH
         self.in_wheelie = False
+        self.wmode = False
+        self.landing = False
         self.crash_t = 0.0
         self.shake_t = 0.4
         self.result_t = 0.0
@@ -940,8 +970,9 @@ class Game:
         playing = self.state != TITLE
         # Nur schmale Streifen und kleine Sprites bewegen sich
         px = int(self.s * PX_PER_M)
-        self.seams.x = -(px % 24)
-        self.dashes.x = -(px % 24)
+        self.seams.x = -(px % 32)
+        self.seams.hidden = self.v > 14      # bei hohem Tempo würden sie flackern
+        self.dashes.x = -(px % 96)
         fx = int(self.s * PX_PER_M * 0.9)
         for tg, off, w in self.props:
             x = (off - fx) % PROP_PERIOD - 30
