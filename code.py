@@ -4,6 +4,7 @@
 #   B      = Bremsen (drückt das Vorderrad wieder runter)
 #   START  = Pause
 #   SELECT = Ton an/aus
+#   RUNTER = Bilder pro Sekunde anzeigen (FPS)
 #
 # Ziel: Fahr einen möglichst langen Wheelie! Wenn das Vorderrad wieder
 # sauber aufsetzt, wird die Strecke gezählt. Kippst du nach hinten um,
@@ -31,10 +32,11 @@ except ImportError:
 # ------------------------------------------------------------------
 # EINSTELLUNGEN - hier kannst du das Spiel leichter/schwerer machen
 # ------------------------------------------------------------------
-MAX_SPEED_KMH = 25    # Höchstgeschwindigkeit
-ACCEL = 2.2           # Beschleunigung mit A (m/s²)
-BRAKE_DECEL = 3.5     # Bremsen mit B (m/s²), im Wheelie nur halb so stark
-ROLL_DECEL = 0.35     # Ausrollen ohne Knopf (m/s²)
+MAX_SPEED_KMH = 30    # Höchstgeschwindigkeit mit Gas (A)
+CRUISE_KMH = 18       # so schnell rollt der Scooter von allein
+ACCEL = 3.0           # Beschleunigung mit A (m/s²)
+CRUISE_ACCEL = 2.0    # Beschleunigung von allein bis CRUISE_KMH (m/s²)
+BRAKE_DECEL = 4.0     # Bremsen mit B (m/s²), im Wheelie schwächer
 BALANCE_DEG = 42      # Gleichgewichtspunkt des Wheelies (Grad)
 CRASH_DEG = 68        # ab hier kippst du nach hinten um (Grad)
 GRAVITY = 4.0         # wie stark das Vorderrad nach unten will
@@ -53,18 +55,22 @@ PX_PER_M = 26                 # 26 Pixel = 1 Meter (Radstand)
 REAR_X, AXLE_Y = 48, 112      # Hinterachse auf dem Bildschirm
 WHEEL_R = 5
 WHEELBASE = 26
-SPR_W, SPR_H, SPR_PX, SPR_PY = 96, 60, 52, 50   # Sprite-Leinwand + Drehpunkt
+SPR_PX, SPR_PY = 60, 60       # Drehpunkt beim Vorzeichnen der Scooter-Bilder
+FRAME_STEP = 3                # ein Scooter-Bild alle 3 Grad
+N_PLAY = CRASH_DEG // FRAME_STEP + 1
 VMAX = MAX_SPEED_KMH / 3.6
+CRUISE = CRUISE_KMH / 3.6
 PHI0 = math.radians(90 - BALANCE_DEG)
 CRASH_RAD = math.radians(CRASH_DEG)
 LEAN = 0.5                    # Fahrer lehnt sich nur halb so weit zurück
+PROP_PERIOD = 240             # Abstand, in dem sich Laternen/Bäume wiederholen
 
-BTN_B, BTN_A, BTN_START, BTN_SELECT = 1, 2, 4, 8
+BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_DOWN = 1, 2, 4, 8, 32
 
 TITLE, PLAY, PAUSE, CRASH = 0, 1, 2, 3
 
 # ------------------------------------------------------------------
-# Pixel-Schrift (5x7)
+# Pixel-Schrift (5x7, mit eingebautem Schatten)
 # ------------------------------------------------------------------
 FONT_CHARS = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ.:!-/=+?()><"
 FONT_HEX = (
@@ -100,19 +106,6 @@ def rect(bmp, x0, y0, x1, y1, c):
                 bmp[x, y] = c
 
 
-def wrect(bmp, x0, y0, x1, y1, c):
-    """Wie rect(), aber horizontal umlaufend (für endlos scrollende Ebenen)."""
-    w = bmp.width
-    size = x1 - x0
-    if size <= 0:
-        return
-    x0 %= w
-    x1 = x0 + size
-    rect(bmp, x0, y0, x1, y1, c)
-    if x1 > w:
-        rect(bmp, 0, y0, x1 - w, y1, c)
-
-
 def make_palette(colors, transparent=False):
     p = displayio.Palette(len(colors))
     for i, c in enumerate(colors):
@@ -123,34 +116,30 @@ def make_palette(colors, transparent=False):
 
 
 def make_font():
+    """Alle Zeichen in eine Bitmap: Farbe 1 = Schrift, Farbe 2 = Schatten."""
     data = binascii.unhexlify(FONT_HEX)
-    bmp = displayio.Bitmap(6 * len(FONT_CHARS), 8, 2)
-    for g in range(len(FONT_CHARS)):
-        for r in range(7):
-            bits = data[g * 7 + r]
-            for c in range(5):
-                if bits & (16 >> c):
-                    bmp[g * 6 + c, r] = 1
+    bmp = displayio.Bitmap(6 * len(FONT_CHARS), 8, 3)
+    for value, dx in ((2, 1), (1, 0)):
+        for g in range(len(FONT_CHARS)):
+            for r in range(7):
+                bits = data[g * 7 + r]
+                for c in range(5):
+                    if bits & (16 >> c):
+                        bmp[g * 6 + c + dx, r + dx] = value
     return bmp
 
 
 class Label:
-    """Ein Text aus Kacheln der Pixel-Schrift, mit Schatten."""
+    """Ein Text aus Kacheln der Pixel-Schrift."""
 
     def __init__(self, font, parent, n, color, scale=1, shadow=0x101018):
         self.n = n
         self.scale = scale
         self.g = displayio.Group(scale=scale)
-        self.tgs = []
-        for col, off in ((shadow, 1), (color, 0)):
-            if col is None:
-                continue
-            tg = displayio.TileGrid(
-                font, pixel_shader=make_palette((0, col), True),
-                width=n, height=1, tile_width=6, tile_height=8, x=off, y=off)
-            self.g.append(tg)
-            self.tgs.append(tg)
-        self.pal = self.tgs[-1].pixel_shader
+        self.pal = make_palette((0, color, shadow), True)
+        self.tg = displayio.TileGrid(font, pixel_shader=self.pal, width=n, height=1,
+                                     tile_width=6, tile_height=8)
+        self.g.append(self.tg)
         parent.append(self.g)
         self.text = ""
 
@@ -159,9 +148,7 @@ class Label:
         text = text[:self.n]
         if text != self.text:
             for i in range(self.n):
-                idx = FONT_INDEX.get(text[i], 0) if i < len(text) else 0
-                for tg in self.tgs:
-                    tg[i] = idx
+                self.tg[i] = FONT_INDEX.get(text[i], 0) if i < len(text) else 0
             self.text = text
         w = (len(text) * 6 - 1) * self.scale
         if align == 1:
@@ -179,50 +166,33 @@ class Label:
         self.g.hidden = True
 
 
-class Canvas:
-    """Kleine Leinwand, auf die der Scooter jedes Bild neu gezeichnet wird."""
+class Raster:
+    """Füllt Polygone und Kreise zeilenweise in eine Bitmap.
+    Ohne Bitmap (bmp = None) wird nur gemessen, wie groß das Bild wird."""
 
-    def __init__(self, w, h, palette, x, y):
-        self.w = w
-        self.h = h
-        self.bmp = displayio.Bitmap(w, h, len(palette))
-        self.tg = displayio.TileGrid(self.bmp, pixel_shader=palette, x=x, y=y)
-        self.x0, self.y0, self.x1, self.y1 = 0, 0, w - 1, h - 1
-
-    def clear(self):
-        if self.x1 >= self.x0:
-            rect(self.bmp, self.x0, self.y0, self.x1 + 1, self.y1 + 1, 0)
-        self.x0, self.y0, self.x1, self.y1 = self.w, self.h, -1, -1
+    def __init__(self):
+        self.bmp = None
+        self.ox = self.oy = 0
+        self.x0 = self.y0 = 9999
+        self.x1 = self.y1 = -9999
 
     def span(self, xa, xb, y, c):
-        if y < 0 or y >= self.h:
-            return
-        xa = max(xa, 0)
-        xb = min(xb, self.w - 1)
         if xb < xa:
             return
-        if _fill_region:
-            _fill_region(self.bmp, xa, y, xb + 1, y + 1, c)
+        if self.bmp is None:
+            self.x0 = min(self.x0, xa)
+            self.x1 = max(self.x1, xb)
+            self.y0 = min(self.y0, y)
+            self.y1 = max(self.y1, y)
         else:
-            for x in range(xa, xb + 1):
-                self.bmp[x, y] = c
-        if xa < self.x0:
-            self.x0 = xa
-        if xb > self.x1:
-            self.x1 = xb
-        if y < self.y0:
-            self.y0 = y
-        if y > self.y1:
-            self.y1 = y
+            rect(self.bmp, xa - self.ox, y - self.oy, xb - self.ox + 1, y - self.oy + 1, c)
 
     def poly(self, p, c):
-        """Konvexes Polygon füllen (Zeile für Zeile)."""
+        """Konvexes Polygon füllen."""
         ymin = min(q[1] for q in p)
         ymax = max(q[1] for q in p)
         ya = int(ymin + 0.5)
-        yb = int(ymax - 0.5)
-        if yb < ya:
-            yb = ya
+        yb = max(ya, int(ymax - 0.5))
         n = len(p)
         for y in range(ya, yb + 1):
             yc = min(max(y + 0.5, ymin), ymax)
@@ -233,10 +203,8 @@ class Canvas:
                 bx, by = p[j]
                 if (ay <= yc) != (by <= yc) or (ay == by == yc):
                     x = ax if ay == by else ax + (yc - ay) * (bx - ax) / (by - ay)
-                    if x < xl:
-                        xl = x
-                    if x > xr:
-                        xr = x
+                    xl = min(xl, x)
+                    xr = max(xr, x)
                 j = i
             if xr >= xl:
                 xa = int(xl + 0.5)
@@ -257,13 +225,97 @@ class Canvas:
 
     def circle(self, p, r, c):
         cx, cy = p
-        r2 = r * r
         for y in range(int(cy - r + 0.5), int(cy + r - 0.5) + 1):
             d = y + 0.5 - cy
-            h = r2 - d * d
+            h = r * r - d * d
             if h >= 0:
                 h = math.sqrt(h)
                 self.span(int(cx - h + 0.5), int(cx + h - 0.5), y, c)
+
+
+# Farben für Scooter und Fahrer
+C_TIRE, C_HUB, C_BODY, C_DARK, C_PANTS, C_PANTS2, C_SHIRT, C_SKIN, \
+    C_HELMET, C_SHOE, C_LIGHT, C_RED, C_SHADOW = range(1, 14)
+SPRITE_COLORS = (0, 0x17171C, 0xA8AEB6, 0x19C2A0, 0x0E7C68, 0x2E4485, 0x223266,
+                 0xE84A3C, 0xF4C7A1, 0xFFD23F, 0x2A2A2A, 0xFFF6B0, 0xFF3030, 0x26262E)
+
+
+def draw_rider(cv, th, lean):
+    """Scooter + Fahrer, Wheelie-Winkel th (rad). Drehpunkt = Hinterachse."""
+    ct = math.cos(th)
+    st = math.sin(th)
+    ox, oy = SPR_PX, SPR_PY
+
+    def S(x, y):    # Scooter-Koordinaten (Hinterachse = 0,0) -> Bild
+        return (ox + x * ct - y * st, oy - x * st - y * ct)
+
+    # Schatten auf der Straße
+    fx = WHEELBASE * ct
+    cv.span(int(ox + min(0, fx)) - 5, int(ox + max(0, fx)) + 4, oy + 5, C_SHADOW)
+
+    # Scooter
+    cv.circle(S(0, 0), WHEEL_R, C_TIRE)
+    cv.circle(S(0, 0), 1.8, C_HUB)
+    cv.poly((S(-3, 0.6), S(21, 0.6), S(21, -2.6), S(-3, -2.6)), C_BODY)
+    cv.seg(S(-3.5, -0.2), S(-3.5, -1.8), 2.0, C_RED)
+    cv.seg(S(17, -1), S(24.5, 2.5), 3.0, C_BODY)
+    cv.seg(S(25, 0), S(21.5, 22), 2.6, C_DARK)
+    cv.seg(S(18.5, 22.5), S(24, 22.5), 2.2, C_TIRE)
+    cv.seg(S(23.4, 13), S(23.7, 15.5), 2.6, C_LIGHT)
+    cv.circle(S(WHEELBASE, 0), WHEEL_R, C_TIRE)
+    cv.circle(S(WHEELBASE, 0), 1.8, C_HUB)
+
+    # Fahrer (lehnt sich nur teilweise mit zurück)
+    phi = th * lean
+    cp = math.cos(phi)
+    sp = math.sin(phi)
+    mx = 9.5 * ct - 0.6 * st
+    my = 9.5 * st + 0.6 * ct
+
+    def R(x, y):    # Fahrer-Koordinaten (Füße = 0,0) -> Bild
+        return (ox + mx + x * cp - y * sp, oy - my - x * sp - y * cp)
+
+    hip = R(-0.5, 17.5)
+    shoulder = R(1.5, 27.5)
+    for ax, color in ((5.5, C_PANTS2), (14.5, C_PANTS)):
+        knee = R(((ax - 9.5) * 0.5) + 1.8, 9.0)
+        cv.seg(S(ax, 2.0), knee, 3.2, color)
+        cv.circle(knee, 1.6, color)
+        cv.seg(knee, hip, 3.6, color)
+        cv.seg(S(ax - 2, 1.4), S(ax + 2.2, 1.4), 2.2, C_SHOE)
+    cv.seg(hip, shoulder, 5.5, C_SHIRT)
+    cv.circle(R(2.6, 33.2), 3.8, C_SKIN)
+    cv.poly([R(2.6 + 4.4 * math.cos(a), 33.6 + 4.4 * math.sin(a))
+             for a in (0.0, 0.6, 1.2, 1.9, 2.5, 3.14)], C_HELMET)
+    grip = S(20, 22.5)
+    cv.seg(shoulder, grip, 2.4, C_SHIRT)
+    cv.circle(grip, 1.4, C_SKIN)
+
+
+def frame_specs():
+    """(Winkel, Zurücklehnen) für jedes vorgezeichnete Scooter-Bild."""
+    specs = [(i * FRAME_STEP, LEAN) for i in range(N_PLAY)]
+    for k in range(1, 5):     # Bilder für den Überschlag
+        specs.append((CRASH_DEG + (100 - CRASH_DEG) * k / 4, LEAN + (1 - LEAN) * k / 4))
+    return specs
+
+
+def build_frames(group):
+    """Zeichnet alle Scooter-Bilder einmal vor (beim Start)."""
+    pal = make_palette(SPRITE_COLORS, True)
+    frames = []
+    for deg, lean in frame_specs():
+        r = Raster()
+        draw_rider(r, math.radians(deg), lean)      # 1. Größe messen
+        r.bmp = displayio.Bitmap(r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, len(SPRITE_COLORS))
+        r.ox, r.oy = r.x0, r.y0
+        draw_rider(r, math.radians(deg), lean)      # 2. wirklich zeichnen
+        tg = displayio.TileGrid(r.bmp, pixel_shader=pal,
+                                x=REAR_X - SPR_PX + r.x0, y=AXLE_Y - SPR_PY + r.y0)
+        tg.hidden = True
+        group.append(tg)
+        frames.append(tg)
+    return frames
 
 
 # ------------------------------------------------------------------
@@ -299,7 +351,7 @@ class Buttons:
 
 
 class Pixels:
-    """Die NeoPixel-LEDs unter dem Bildschirm (ohne Zusatz-Bibliothek)."""
+    """Die NeoPixel-LED(s) unter dem Bildschirm (ohne Zusatz-Bibliothek)."""
 
     def __init__(self):
         self.pin = None
@@ -347,7 +399,7 @@ class Sound:
             self.enable = digitalio.DigitalInOut(board.SPEAKER_ENABLE)
             self.enable.switch_to_output(value=on)
             self.audio = audioio.AudioOut(board.SPEAKER)
-            self.synth = synthio.Synthesizer(sample_rate=22050)
+            self.synth = synthio.Synthesizer(sample_rate=16000)
             self.audio.play(self.synth)
             n = 32
             self.saw = array.array("h", [int(-28000 + 56000 * i / n) for i in range(n)])
@@ -439,105 +491,111 @@ class Store:
 
 
 # ------------------------------------------------------------------
-# Hintergrund-Grafik (wird einmal beim Start gemalt)
+# Hintergrund: wird beim Start EINMAL gemalt und bewegt sich nicht.
+# Nur schmale Streifen und kleine Sprites bewegen sich, das ist schnell.
 # ------------------------------------------------------------------
-SKY = (0x3E8EDE, 0x6FB4EE, 0xA8D8F5)
+(SKY0, SKY1, SKY2, SUN, GLOW, CLOUD, FAR1, FAR2, WALL_A, WALL_B, WALL_C, ROOF,
+ TREE, TREE_D, TRUNK, GLASS, DOOR, WALK, CURB, ROAD, ROADLINE) = range(21)
+BG_COLORS = (0x3E8EDE, 0x6FB4EE, 0xA8D8F5, 0xFFE27A, 0xFFF3B8, 0xFFFFFF, 0x8BA6C9,
+             0xA9C0DD, 0xE9A15B, 0xDDD5C4, 0x9FC3A8, 0x8C3B2E, 0x3E9D4B, 0x2E7A3A,
+             0x6B4A2B, 0x5D7EA6, 0x5A3A26, 0xB3B3BD, 0x7A7A86, 0x3B3B45, 0x8E8E99)
+
+
+def blob(bmp, cx, cy, r, c):
+    """Gefüllter Kreis (für Wolken, Bäume, Sonne)."""
+    for y in range(-int(r), int(r) + 1):
+        hw = int(math.sqrt(max(0, r * r - y * y)))
+        rect(bmp, int(cx) - hw, int(cy) + y, int(cx) + hw + 1, int(cy) + y + 1, c)
 
 
 def make_background():
-    pal = make_palette((SKY[0], SKY[1], SKY[2], 0xFFE27A, 0xB3B3BD,
-                        0x7A7A86, 0x3B3B45, 0x8E8E99, 0xFFF3B8))
-    bmp = displayio.Bitmap(W, H, len(pal))
-    rect(bmp, 0, 0, W, 30, 0)
-    rect(bmp, 0, 30, W, 58, 1)
-    rect(bmp, 0, 58, W, 100, 2)
-    for y, c in ((28, 1), (29, 0), (56, 2), (57, 1)):   # weiche Übergänge
+    bmp = displayio.Bitmap(W, H, len(BG_COLORS))
+    rect(bmp, 0, 0, W, 30, SKY0)
+    rect(bmp, 0, 30, W, 58, SKY1)
+    rect(bmp, 0, 58, W, 100, SKY2)
+    for y, c in ((28, SKY1), (29, SKY0), (56, SKY2), (57, SKY1)):   # weiche Übergänge
         for x in range(y % 2, W, 2):
             bmp[x, y] = c
     for y in range(9, 32):            # Sonne mit Schein
         for x in range(117, 143):
             d = (x - 129.5) ** 2 + (y - 20.5) ** 2
             if d < 81:
-                bmp[x, y] = 3
+                bmp[x, y] = SUN
             elif d < 121 and (x + y) % 2 == 0:
-                bmp[x, y] = 8
-    rect(bmp, 0, 98, W, 104, 4)       # Gehweg
-    rect(bmp, 0, 104, W, 107, 5)      # Bordstein
-    rect(bmp, 0, 107, W, H, 6)        # Straße
-    rect(bmp, 0, 108, W, 109, 7)
-    return displayio.TileGrid(bmp, pixel_shader=pal)
-
-
-def make_layer(h, colors, painter, y):
-    pal = make_palette((0,) + colors, True)
-    bmp = displayio.Bitmap(160, h, len(pal))
-    painter(bmp)
-    return displayio.TileGrid(bmp, pixel_shader=pal, width=2, height=1,
-                              tile_width=160, tile_height=h, y=y)
-
-
-def paint_clouds(bmp):
-    for cx, cy, s in ((20, 10, 1.0), (75, 5, 0.7), (128, 13, 0.85)):
+                bmp[x, y] = GLOW
+    for cx, cy, s in ((20, 40, 1.0), (75, 35, 0.7), (128, 43, 0.85)):     # Wolken
         for dx, dy, r in ((0, 4, 5), (6, 1, 6), (13, 3, 5), (19, 5, 4), (7, 6, 5)):
-            r *= s
-            for y in range(int(-r), int(r) + 1):
-                hw = int(math.sqrt(max(0, r * r - y * y)))
-                yy = int(cy + dy * s) + y
-                if 0 <= yy < bmp.height:
-                    wrect(bmp, int(cx + dx * s) - hw, yy, int(cx + dx * s) + hw + 1, yy + 1, 1)
+            blob(bmp, cx + dx * s, cy + dy * s, r * s, CLOUD)
 
-
-def paint_far(bmp):
-    random.seed(7)
+    random.seed(7)                    # Hochhäuser in der Ferne
     x = 0
-    while x < 160:
+    while x < W:
         w = random.randint(9, 20)
-        h = random.randint(10, 30)
-        top = bmp.height - h
-        wrect(bmp, x, top, x + w, bmp.height, 1)
-        for wy in range(top + 3, bmp.height - 3, 5):
+        top = 98 - random.randint(10, 30)
+        rect(bmp, x, top, x + w, 98, FAR1)
+        for wy in range(top + 3, 95, 5):
             for wx in range(x + 2, x + w - 2, 4):
                 if random.random() < 0.5:
-                    wrect(bmp, wx, wy, wx + 2, wy + 2, 2)
+                    rect(bmp, wx, wy, wx + 2, wy + 2, FAR2)
         x += w + random.randint(0, 6)
 
-
-def paint_near(bmp):
-    random.seed(3)
-    hb = bmp.height
+    random.seed(3)                    # Häuser und Bäume an der Straße
     x = 0
-    while x < 152:
-        if random.random() < 0.35:            # Baum
+    while x < W:
+        if random.random() < 0.35:
             tx = x + 7
-            wrect(bmp, tx - 1, hb - 12, tx + 2, hb, 7)
-            for (dx, dy, r, c) in ((0, 18, 8, 6), (-3, 21, 5, 5), (3, 15, 5, 5)):
-                for yy in range(-r, r + 1):
-                    hw = int(math.sqrt(r * r - yy * yy))
-                    wrect(bmp, tx + dx - hw, hb - dy + yy, tx + dx + hw + 1, hb - dy + yy + 1, c)
+            rect(bmp, tx - 1, 86, tx + 2, 98, TRUNK)
+            blob(bmp, tx, 80, 8, TREE_D)
+            blob(bmp, tx - 3, 77, 5, TREE)
+            blob(bmp, tx + 3, 83, 5, TREE)
             x += 16
-        else:                                  # Haus
+        else:
             w = random.randint(20, 30)
-            h = random.randint(18, 28)
-            wall = random.choice((1, 2, 3))
-            top = hb - h
-            wrect(bmp, x, top, x + w, hb, wall)
-            for i in range(w // 2 + 2):        # Dach
-                wrect(bmp, x - 1 + i, top - 1 - i, x + w + 1 - i, top - i, 4)
-            for wy in range(top + 3, hb - 9, 8):
+            top = 98 - random.randint(18, 28)
+            rect(bmp, x, top, x + w, 98, random.choice((WALL_A, WALL_B, WALL_C)))
+            for i in range(w // 2 + 2):    # Dach
+                rect(bmp, x - 1 + i, top - 1 - i, x + w + 1 - i, top - i, ROOF)
+            for wy in range(top + 3, 89, 8):
                 for wx in range(x + 3, x + w - 5, 7):
-                    wrect(bmp, wx, wy, wx + 4, wy + 5, 8)
+                    rect(bmp, wx, wy, wx + 4, wy + 5, GLASS)
             dx = x + w // 2 - 2
-            wrect(bmp, dx, hb - 8, dx + 5, hb, 9)
+            rect(bmp, dx, 90, dx + 5, 98, DOOR)
             x += w + random.randint(2, 6)
 
+    rect(bmp, 0, 98, W, 104, WALK)    # Gehweg
+    rect(bmp, 0, 104, W, 107, CURB)   # Bordstein
+    rect(bmp, 0, 107, W, H, ROAD)     # Straße
+    rect(bmp, 0, 108, W, 109, ROADLINE)
+    return displayio.TileGrid(bmp, pixel_shader=make_palette(BG_COLORS))
 
-def make_road_details():
-    pal = make_palette((0, 0x8E8E99, 0xEDEDED), True)
-    bmp = displayio.Bitmap(24, 30, 3)
-    rect(bmp, 0, 0, 1, 6, 1)        # Fugen im Gehweg
-    rect(bmp, 0, 26, 12, 28, 2)     # Mittelstreifen
-    return displayio.TileGrid(bmp, pixel_shader=pal, width=8, height=1,
-                              tile_width=24, tile_height=30, y=98)
+
+def make_strip(h, color, w_on, y):
+    """Schmaler, endlos scrollender Streifen (Gehwegfugen, Mittelstreifen)."""
+    bmp = displayio.Bitmap(24, h, 2)
+    rect(bmp, 0, 0, w_on, h, 1)
+    return displayio.TileGrid(bmp, pixel_shader=make_palette((0, color), True),
+                              width=8, height=1, tile_width=24, tile_height=h, y=y)
+
+
+def make_lamp():
+    pal = make_palette((0, 0x4A4F5A, 0xFFF3B8, 0x2E323A), True)
+    bmp = displayio.Bitmap(7, 38, 4)
+    rect(bmp, 3, 6, 5, 38, 1)         # Mast
+    rect(bmp, 2, 35, 6, 38, 3)        # Fuß
+    rect(bmp, 1, 1, 6, 7, 3)          # Lampe
+    rect(bmp, 2, 2, 5, 6, 2)
+    rect(bmp, 2, 0, 5, 1, 3)
+    return displayio.TileGrid(bmp, pixel_shader=pal, y=101 - 38)
+
+
+def make_tree():
+    pal = make_palette((0, 0x3E9D4B, 0x2E7A3A, 0x6B4A2B), True)
+    bmp = displayio.Bitmap(15, 28, 4)
+    rect(bmp, 6, 12, 9, 28, 3)
+    blob(bmp, 7, 8, 7, 2)
+    blob(bmp, 5, 6, 4, 1)
+    blob(bmp, 10, 10, 3, 1)
+    return displayio.TileGrid(bmp, pixel_shader=pal, y=101 - 28)
 
 
 def make_bump():
@@ -548,13 +606,6 @@ def make_bump():
     rect(bmp, 3, 1, 9, 3, 1)
     rect(bmp, 1, 2, 11, 3, 1)
     return displayio.TileGrid(bmp, pixel_shader=pal, y=115)
-
-
-# Farben für Scooter und Fahrer
-C_TIRE, C_HUB, C_BODY, C_DARK, C_PANTS, C_PANTS2, C_SHIRT, C_SKIN, \
-    C_HELMET, C_SHOE, C_LIGHT, C_RED, C_SHADOW = range(1, 14)
-SPRITE_COLORS = (0, 0x17171C, 0xA8AEB6, 0x19C2A0, 0x0E7C68, 0x2E4485, 0x223266,
-                 0xE84A3C, 0xF4C7A1, 0xFFD23F, 0x2A2A2A, 0xFFF6B0, 0xFF3030, 0x26262E)
 
 
 # ------------------------------------------------------------------
@@ -571,35 +622,49 @@ class Game:
         self.root = displayio.Group()
         self.world = displayio.Group()
         self.root.append(self.world)
+        loading = Label(font, self.root, 8, 0xFFFFFF)
+        loading.set("LÄDT...", 80, 60, 1)
+        try:
+            display.root_group = self.root
+        except AttributeError:
+            display.show(self.root)
 
         self.world.append(make_background())
-        self.clouds = make_layer(26, (0xFFFFFF,), paint_clouds, 30)
-        self.far = make_layer(36, (0x8BA6C9, 0xA9C0DD), paint_far, 62)
-        self.near = make_layer(48, (0xE9A15B, 0xDDD5C4, 0x9FC3A8, 0x8C3B2E,
-                                    0x3E9D4B, 0x2E7A3A, 0x6B4A2B, 0x5D7EA6, 0x5A3A26),
-                               paint_near, 50)
-        self.road = make_road_details()
-        for layer in (self.clouds, self.far, self.near, self.road):
-            self.world.append(layer)
+        self.seams = make_strip(6, 0x8E8E99, 1, 98)
+        self.dashes = make_strip(2, 0xEDEDED, 12, 124)
+        self.world.append(self.seams)
+        self.world.append(self.dashes)
+        self.props = []
+        for maker, off, w in ((make_lamp, 0, 7), (make_tree, 85, 15), (make_lamp, 165, 7)):
+            tg = maker()
+            self.world.append(tg)
+            self.props.append((tg, off, w))
         self.bumps = [make_bump(), make_bump()]
         for b in self.bumps:
             b.hidden = True
             self.world.append(b)
-        self.cv = Canvas(SPR_W, SPR_H, make_palette(SPRITE_COLORS, True),
-                         REAR_X - SPR_PX, AXLE_Y - SPR_PY)
-        self.world.append(self.cv.tg)
+        self.rider = displayio.Group()
+        self.world.append(self.rider)
+        self.frames = build_frames(self.rider)
+        self.frame = 0
+        self.frames[0].hidden = False
+        self.root.remove(loading.g)
 
         hud = displayio.Group()
         self.root.append(hud)
         self.l_best = Label(font, hud, 16, 0xFFFFFF)
         self.l_speed = Label(font, hud, 8, 0xFFFFFF)
-        self.l_big = Label(font, hud, 13, 0xFFFFFF, scale=2)
+        self.l_big = Label(font, hud, 9, 0xFFFFFF, scale=2)
         self.l_sub = Label(font, hud, 24, 0xFFE27A)
         self.l_title1 = Label(font, hud, 9, 0xFFFFFF, scale=2)
         self.l_title2 = Label(font, hud, 7, 0xFFD23F, scale=3, shadow=0x8C3B2E)
         self.l_help = Label(font, hud, 24, 0xFFFFFF)
         self.l_prompt = Label(font, hud, 22, 0xFFFFFF)
         self.l_toast = Label(font, hud, 18, 0xFFFFFF)
+        self.l_fps = Label(font, hud, 7, 0xFFFFFF)
+        self.l_fps.hide()
+        self.fps = 0.0
+        self.fps_t = -1.0
 
         # Winkelanzeige: grün = sicher, gelb = Gleichgewicht, rot = Absturzgefahr
         mpal = make_palette((0, 0x101018, 0x3CCB5A, 0xFFD23F, 0xE84A3C, 0xFFFFFF), True)
@@ -617,14 +682,10 @@ class Game:
         hud.append(self.meter)
         hud.append(self.marker)
 
-        try:
-            display.root_group = self.root
-        except AttributeError:
-            display.show(self.root)
-
         self.t = 0.0
         self.toast_t = 0.0
-        self.drawn = None
+        self.best_key = None
+        self.kmh = -1
         self.reset_ride()
         self.goto_title()
 
@@ -634,16 +695,16 @@ class Game:
         self.th = 0.0           # Wheelie-Winkel (rad)
         self.om = 0.0           # Drehgeschwindigkeit (rad/s)
         self.s = 0.0            # gefahrene Strecke (m)
-        self.lean = LEAN
         self.in_wheelie = False
         self.wd = 0.0           # Wheelie-Strecke (m)
         self.wt = 0.0           # Wheelie-Zeit (s)
+        self.hud_t = 1.0
         self.result_t = 0.0
         self.record_t = 0.0
         self.shake_t = 0.0
         self.hop_t = 0.0
         self.crash_t = 0.0
-        self.next_bump = 25.0
+        self.next_bump = 30.0
         self.bump_pos = [-100.0, -100.0]
 
     def goto_title(self):
@@ -678,6 +739,16 @@ class Game:
             self.sound.set_on(self.store.sound)
             self.store.save()
             self.toast("TON AN" if self.store.sound else "TON AUS")
+        if b.pressed & BTN_DOWN:
+            self.fps_t = -1.0 if self.fps_t >= 0 else 0.0
+            self.l_fps.hide()
+        if dt > 0:
+            self.fps += (1 / dt - self.fps) * 0.1
+        if self.fps_t >= 0:
+            self.fps_t += dt
+            if self.fps_t > 0.5:
+                self.fps_t = 0.0
+                self.l_fps.set("%d FPS" % int(self.fps + 0.5), 2, 118)
 
         if self.state == TITLE:
             self.update_title(dt)
@@ -732,13 +803,16 @@ class Game:
 
     def physics(self, dt, gas, brake):
         """Ein kleiner Physik-Schritt. Gibt True zurück, wenn das Vorderrad aufsetzt."""
-        if gas:
-            self.v += ACCEL * dt
-        elif not brake:
-            self.v -= ROLL_DECEL * dt
+        v = self.v
         if brake:
-            self.v -= BRAKE_DECEL * dt * (0.5 if self.th > 0 else 1.0)
-        self.v = min(max(self.v, 0.0), VMAX)
+            v -= BRAKE_DECEL * dt * (0.4 if self.th > 0 else 1.0)
+        elif gas:
+            v += ACCEL * dt
+        elif v < CRUISE:
+            v = min(CRUISE, v + CRUISE_ACCEL * dt)     # rollt von allein
+        else:
+            v = max(CRUISE, v - 0.8 * dt)
+        self.v = min(max(v, 0.0), VMAX)
         a = -GRAVITY * math.cos(PHI0 + self.th) - DAMPING * self.om
         if gas:
             a += LIFT * min(1.0, self.v / 2.0)
@@ -765,6 +839,7 @@ class Game:
             self.in_wheelie = True
             self.wd = 0.0
             self.wt = 0.0
+            self.hud_t = 1.0
             self.result_t = 0.0
         if self.in_wheelie:
             self.wd += self.v * dt
@@ -788,7 +863,7 @@ class Game:
         if self.s + 8 > self.next_bump:
             i = 0 if abs(self.bump_pos[0]) < abs(self.bump_pos[1]) else 1
             self.bump_pos[i] = self.next_bump
-            self.next_bump += random.uniform(18, 45)
+            self.next_bump += random.uniform(25, 55)
         for i in range(2):
             p = self.bump_pos[i]
             if p > 0 and s_before < p <= self.s:
@@ -839,7 +914,6 @@ class Game:
         if self.th < limit:
             self.om += 6.0 * dt
             self.th = min(self.th + self.om * dt, limit)
-        self.lean = min(1.0, self.lean + dt * 2)
         self.v = max(0.0, self.v - 7.0 * dt)
         self.s += self.v * dt
         if self.crash_t > 1.0:
@@ -855,19 +929,34 @@ class Game:
                 self.reset_ride()
 
     # ---------------- Zeichnen ----------------
+    def frame_index(self):
+        deg = math.degrees(self.th)
+        if deg <= CRASH_DEG:
+            return min(int(deg / FRAME_STEP + 0.5), N_PLAY - 1)
+        k = int((deg - CRASH_DEG) / ((100 - CRASH_DEG) / 4) + 0.5)
+        return N_PLAY - 1 + min(k, 4)
+
     def draw(self, dt):
-        playing = self.state in (PLAY, PAUSE, CRASH)
-        # Ebenen verschieben (weiter hinten = langsamer)
-        px = self.s * PX_PER_M
-        self.road.x = -(int(px) % 24)
-        self.near.x = -(int(px * 0.45) % 160)
-        self.far.x = -(int(px * 0.18) % 160)
-        self.clouds.x = -(int(px * 0.05 + self.t * 2) % 160)
+        playing = self.state != TITLE
+        # Nur schmale Streifen und kleine Sprites bewegen sich
+        px = int(self.s * PX_PER_M)
+        self.seams.x = -(px % 24)
+        self.dashes.x = -(px % 24)
+        fx = int(self.s * PX_PER_M * 0.9)
+        for tg, off, w in self.props:
+            x = (off - fx) % PROP_PERIOD - 30
+            if -w < x < W:
+                tg.x = x
+                tg.hidden = False
+            else:
+                tg.hidden = True
         for i in range(2):
-            p = abs(self.bump_pos[i])
-            x = REAR_X + int((p - self.s) * PX_PER_M) - 6
-            self.bumps[i].hidden = not (-12 < x < W)
-            self.bumps[i].x = x
+            x = REAR_X + int((abs(self.bump_pos[i]) - self.s) * PX_PER_M) - 6
+            if -12 < x < W:
+                self.bumps[i].x = x
+                self.bumps[i].hidden = False
+            else:
+                self.bumps[i].hidden = True
 
         # Wackeln beim Sturz
         if self.shake_t > 0:
@@ -875,30 +964,40 @@ class Game:
             self.world.x = random.randint(-2, 2) if self.shake_t > 0 else 0
             self.world.y = random.randint(-2, 2) if self.shake_t > 0 else 0
 
-        hop = 0
+        # Scooter-Bild passend zum Winkel zeigen
+        i = self.frame_index()
+        if i != self.frame:
+            self.frames[i].hidden = False
+            self.frames[self.frame].hidden = True
+            self.frame = i
         if self.hop_t > 0:
             self.hop_t -= dt
-            hop = 1
-        key = (int(self.th * 150), int(self.lean * 20), hop)   # nur bei Änderung neu malen
-        if key != self.drawn:
-            self.drawn = key
-            self.draw_scooter(self.th, self.lean, hop)
+        self.rider.y = -1 if self.hop_t > 0 else 0
 
-        # Anzeigen oben
-        if playing:
-            self.l_best.set("REKORD %.1f M" % self.store.best, 2, 2)
-        else:
-            self.l_best.set("REKORD %.1f M" % self.store.best, 80, 57, 1)
-        if playing:
-            self.l_speed.set("%d KM/H" % int(self.v * 3.6 + 0.5), 158, 2, 2)
-        if self.state == PLAY and self.in_wheelie and self.wd >= 0.3:
-            self.l_big.set("%.1f M" % self.wd, 80, 14, 1)
-            self.l_sub.set("%.1f S" % self.wt, 80, 33, 1)
+        # Anzeigen (nur neu schreiben, wenn sich etwas ändert)
+        key = (int(self.store.best * 10), playing)
+        if key != self.best_key:
+            self.best_key = key
+            if playing:
+                self.l_best.set("REKORD %.1f M" % self.store.best, 2, 2)
+            else:
+                self.l_best.set("REKORD %.1f M" % self.store.best, 80, 57, 1)
+        kmh = int(self.v * 3.6 + 0.5)
+        if playing and kmh != self.kmh:
+            self.kmh = kmh
+            self.l_speed.set("%d KM/H" % kmh, 158, 2, 2)
+        if self.state == TITLE:
+            self.kmh = -1
         show_meter = self.state == PLAY and self.in_wheelie
+        if show_meter:
+            self.hud_t += dt
+            if self.hud_t >= 0.1 and self.wd >= 0.3:
+                self.hud_t = 0.0
+                self.l_big.set("%.1f M" % self.wd, 80, 14, 1)
+                self.l_sub.set("%.1f S" % self.wt, 80, 33, 1)
+            self.marker.x = 38 + int(min(self.th / CRASH_RAD, 1.0) * 81)
         self.meter.hidden = not show_meter
         self.marker.hidden = not show_meter
-        if show_meter:
-            self.marker.x = 38 + int(min(self.th / CRASH_RAD, 1.0) * 81)
 
         # Rekord blinkt
         if self.record_t > 0:
@@ -924,60 +1023,6 @@ class Game:
         else:
             L.set(0, 0, 0)
 
-    def draw_scooter(self, th, lean, hop):
-        cv = self.cv
-        cv.clear()
-        ct = math.cos(th)
-        st = math.sin(th)
-        ox = SPR_PX
-        oy = SPR_PY - hop
-
-        def S(x, y):    # Scooter-Koordinaten (Hinterachse = 0,0) -> Leinwand
-            return (ox + x * ct - y * st, oy - x * st - y * ct)
-
-        # Schatten auf der Straße
-        fx = WHEELBASE * ct
-        cv.span(int(ox + min(0, fx)) - 5, int(ox + max(0, fx)) + 4, SPR_PY + 5, C_SHADOW)
-
-        # Scooter
-        cv.circle(S(0, 0), WHEEL_R, C_TIRE)
-        cv.circle(S(0, 0), 1.8, C_HUB)
-        cv.poly((S(-3, 0.6), S(21, 0.6), S(21, -2.6), S(-3, -2.6)), C_BODY)
-        cv.seg(S(-3.5, -0.2), S(-3.5, -1.8), 2.0, C_RED)
-        cv.seg(S(17, -1), S(24.5, 2.5), 3.0, C_BODY)
-        cv.seg(S(25, 0), S(21.5, 22), 2.6, C_DARK)
-        cv.seg(S(18.5, 22.5), S(24, 22.5), 2.2, C_TIRE)
-        cv.seg(S(23.4, 13), S(23.7, 15.5), 2.6, C_LIGHT)
-        cv.circle(S(WHEELBASE, 0), WHEEL_R, C_TIRE)
-        cv.circle(S(WHEELBASE, 0), 1.8, C_HUB)
-
-        # Fahrer (lehnt sich nur teilweise mit zurück)
-        phi = th * lean
-        cp = math.cos(phi)
-        sp = math.sin(phi)
-        mx = 9.5 * ct - 0.6 * st
-        my = 9.5 * st + 0.6 * ct
-
-        def R(x, y):    # Fahrer-Koordinaten (Füße = 0,0) -> Leinwand
-            return (ox + mx + x * cp - y * sp, oy - my - x * sp - y * cp)
-
-        hip = R(-0.5, 17.5)
-        shoulder = R(1.5, 27.5)
-        for ax, color in ((5.5, C_PANTS2), (14.5, C_PANTS)):
-            ankle = S(ax, 2.0)
-            knee = R(((ax - 9.5) * 0.5) + 1.8, 9.0)
-            cv.seg(ankle, knee, 3.2, color)
-            cv.circle(knee, 1.6, color)
-            cv.seg(knee, hip, 3.6, color)
-            cv.seg(S(ax - 2, 1.4), S(ax + 2.2, 1.4), 2.2, C_SHOE)
-        cv.seg(hip, shoulder, 5.5, C_SHIRT)
-        cv.circle(R(2.6, 33.2), 3.8, C_SKIN)
-        cv.poly([R(2.6 + 4.4 * math.cos(a), 33.6 + 4.4 * math.sin(a))
-                 for a in (0.0, 0.6, 1.2, 1.9, 2.5, 3.14)], C_HELMET)
-        grip = S(20, 22.5)
-        cv.seg(shoulder, grip, 2.4, C_SHIRT)
-        cv.circle(grip, 1.4, C_SKIN)
-
 
 def main():
     display = board.DISPLAY
@@ -987,7 +1032,7 @@ def main():
     try:
         while True:
             now = time.monotonic_ns()
-            dt = min((now - last) / 1e9, 0.05)
+            dt = min((now - last) / 1e9, 0.1)
             last = now
             game.step(dt)
             display.refresh()

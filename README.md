@@ -19,11 +19,13 @@ geschrieben in CircuitPython.
 | **B** | Bremsen – drückt das Vorderrad wieder runter |
 | **START** | Pause |
 | **SELECT** | Ton an/aus |
+| **RUNTER** (Steuerkreuz) | Bilder pro Sekunde (FPS) anzeigen |
 | **START 3 s halten** (im Startbildschirm) | Rekord löschen |
 
 ## So geht das Spiel
 
-* Halt **A** gedrückt: Der Scooter fährt los und das Vorderrad geht hoch.
+* Der Scooter rollt von allein mit 18 km/h. Mit **A** gibst du Gas (bis 30 km/h)
+  und das Vorderrad geht hoch.
 * Wenn du A die ganze Zeit hältst, **kippst du nach hinten um**. Tipp A also
   immer wieder kurz an, damit du in der Balance bleibst.
 * Kommst du zu weit hoch, rettet dich **B** (Bremse): Das Vorderrad geht runter.
@@ -76,7 +78,8 @@ der einen Datei.
 Oben in `code.py` gibt es einen Block **EINSTELLUNGEN**. Dort kannst du
 z. B. ändern:
 
-* `MAX_SPEED_KMH` – Höchstgeschwindigkeit
+* `MAX_SPEED_KMH` – Höchstgeschwindigkeit mit Gas
+* `CRUISE_KMH` – so schnell rollt der Scooter von allein
 * `CRASH_DEG` – ab welchem Winkel man umkippt (größer = leichter)
 * `GRAVITY` / `LIFT` – wie schnell das Vorderrad fällt bzw. hochgeht
 * `DAMPING` – größer = gutmütiger und langsamer

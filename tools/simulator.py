@@ -27,7 +27,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.join(HERE, "..", "code.py")
 
-B, A, START, SELECT = 0, 1, 2, 3
+B, A, START, SELECT, DOWN = 0, 1, 2, 3, 5
 
 
 # ------------------------------------------------------------------
@@ -246,6 +246,14 @@ def main():
     r.run(0.1, keys=[SELECT])
     r.run(0.1, keys=[])
     assert r.micro.nvm[2] == 0 and not g.store.sound
+
+    # FPS-Anzeige mit RUNTER
+    r.run(0.1, keys=[DOWN])
+    r.run(0.7, keys=[])
+    assert not g.l_fps.g.hidden and g.l_fps.text.endswith("FPS"), g.l_fps.text
+    r.run(0.1, keys=[DOWN])
+    r.run(0.1, keys=[])
+    assert g.l_fps.g.hidden
 
     # Neustart des "Geräts": Rekord wird wieder geladen
     g2 = r.mod.Game(FakeDisplay())
