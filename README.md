@@ -5,9 +5,9 @@ geschrieben in CircuitPython.
 
 ![Spiel-Animation](docs/spiel.gif)
 
-| Start | Wheelie | Neuer Rekord | Gestürzt |
-|---|---|---|---|
-| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) |
+| Start | Wheelie | Neuer Rekord | Gestürzt | Burnout |
+|---|---|---|---|---|
+| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) | ![Burnout](docs/burnout.png) |
 
 *(Bilder aus dem Simulator, auf dem PyBadge sieht es genauso aus.)*
 
@@ -19,6 +19,7 @@ geschrieben in CircuitPython.
 | **OBEN** nochmal | sauber landen – der Wheelie wird gezählt |
 | **A** | Gas geben (bis 100 km/h), im Wheelie: Vorderrad höher |
 | **B** | Bremsen, im Wheelie: Vorderrad runter |
+| **A + B** gedrückt halten | Burnout! Danach B loslassen = Turbo-Start |
 | **START** | Pause |
 | **SELECT** | Ton an/aus |
 | **RUNTER** (Steuerkreuz) | Bilder pro Sekunde (FPS) anzeigen |
@@ -38,6 +39,9 @@ geschrieben in CircuitPython.
   **Metern** gezählt. Ist sie länger als dein bisheriger Rekord, gibt es einen
   **NEUEN REKORD!** Fällt das Vorderrad von selbst runter, zählt es auch.
 * Wenn du nach hinten umkippst, **zählt der Wheelie nicht**.
+* **Burnout:** Halt **A und B** zusammen gedrückt. Der Scooter bremst ab, das
+  Hinterrad dreht durch, es qualmt und gibt eine schwarze Reifenspur. Lässt du
+  nach mindestens 1 Sekunde nur **B** los, gibt es einen **Turbo-Start**.
 * Pass auf die **Gullydeckel** auf, die schütteln dich durch.
 * Dein Rekord bleibt gespeichert, auch wenn du den PyBadge ausschaltest.
 * Die LEDs unter dem Display leuchten im Wheelie grün → gelb → rot.

@@ -3,6 +3,7 @@
 #   OBEN   = Wheelie-Mode an (Vorderrad hoch) / nochmal OBEN = sauber landen
 #   A      = Gas geben (bis 100 km/h), im Wheelie: Vorderrad höher
 #   B      = Bremsen, im Wheelie: Vorderrad runter
+#   A + B  = Burnout! (B loslassen = Turbo-Start)
 #   START  = Pause
 #   SELECT = Ton an/aus
 #   RUNTER = Bilder pro Sekunde anzeigen (FPS)
@@ -40,6 +41,7 @@ CRUISE_ACCEL = 3.0    # Beschleunigung von allein bis CRUISE_KMH (m/s²)
 COAST_DECEL = 1.5     # so schnell wird er ohne Gas wieder langsamer (m/s²)
 BRAKE_DECEL = 7.0     # Bremsen mit B (m/s²), im Wheelie schwächer
 POP = 1.8             # wie kräftig OBEN das Vorderrad hochreißt
+LAUNCH_BOOST = 5.0    # Extra-Beschleunigung nach einem Burnout (m/s²)
 BALANCE_DEG = 42      # Gleichgewichtspunkt des Wheelies (Grad)
 CRASH_DEG = 68        # ab hier kippst du nach hinten um (Grad)
 GRAVITY = 4.0         # wie stark das Vorderrad nach unten will
@@ -415,6 +417,10 @@ class Sound:
             self.engine = synthio.Note(frequency=120, waveform=self.saw,
                                        envelope=self.env, amplitude=0.0)
             self.synth.press(self.engine)
+            noise = array.array("h", [random.randint(-20000, 20000) for _ in range(64)])
+            self.screech = synthio.Note(frequency=180, waveform=noise,
+                                        envelope=self.env, amplitude=0.0)
+            self.synth.press(self.screech)
             self.ok = True
         except Exception as e:  # pylint: disable=broad-except
             print("Kein Ton:", e)
@@ -451,7 +457,7 @@ class Sound:
         except Exception:  # pylint: disable=broad-except
             self.ok = False
 
-    def update(self, dt, speed, gas):
+    def update(self, dt, speed, gas, burn=False):
         if not self.ok:
             return
         if self.cur is not None or self.seq:
@@ -460,10 +466,15 @@ class Sound:
                 self._next()
         try:
             amp = 0.0
-            if self.on and speed > 0.02:
+            freq = 150 + 600 * speed + (50 if gas else 0)
+            if burn:                          # Motor heult, Reifen quietscht
+                amp = 0.12
+                freq = 650 + random.randint(-80, 80)
+            elif speed > 0.02:
                 amp = 0.04 + (0.05 if gas else 0.0)
-            self.engine.amplitude = amp
-            self.engine.frequency = 150 + 600 * speed + (50 if gas else 0)
+            self.engine.amplitude = amp if self.on else 0.0
+            self.engine.frequency = freq
+            self.screech.amplitude = 0.12 if (burn and self.on) else 0.0
         except Exception:  # pylint: disable=broad-except
             self.ok = False
 
@@ -604,6 +615,54 @@ def make_tree():
     return displayio.TileGrid(bmp, pixel_shader=pal, y=101 - 28)
 
 
+class Smoke:
+    """Rauchwolken beim Burnout: ein paar kleine Sprites, die wiederverwendet werden."""
+
+    def __init__(self, parent, n=14):
+        sheet = displayio.Bitmap(36, 12, 3)
+        for i, r in enumerate((2.2, 3.8, 5.4)):     # klein, mittel, groß
+            blob(sheet, i * 12 + 6, 6, r, 2)
+            blob(sheet, i * 12 + 6, 6, r - 1.2, 1)
+        pal = make_palette((0, 0xE6E6EA, 0xB4B4BC), True)
+        self.parts = []
+        for _ in range(n):
+            tg = displayio.TileGrid(sheet, pixel_shader=pal, width=1, height=1,
+                                    tile_width=12, tile_height=12)
+            tg.hidden = True
+            parent.append(tg)
+            self.parts.append([tg, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # x, y, vx, vy, Alter, Lebensdauer
+
+    def emit(self, x, y):
+        for p in self.parts:
+            if p[6] <= 0:
+                p[1:] = [x, y, -25 - random.random() * 35, -12 - random.random() * 18,
+                         0.0, 0.7 + random.random() * 0.5]
+                return
+
+    def update(self, dt, scroll):
+        for p in self.parts:
+            if p[6] <= 0:
+                continue
+            p[5] += dt
+            tg = p[0]
+            if p[5] >= p[6]:
+                p[6] = 0.0
+                tg.hidden = True
+                continue
+            p[1] += p[3] * dt - scroll
+            p[2] += p[4] * dt
+            p[3] *= 0.96
+            tg[0] = min(2, int(p[5] / p[6] * 3))
+            tg.x = int(p[1]) - 6
+            tg.y = int(p[2]) - 6
+            tg.hidden = False
+
+    def clear(self):
+        for p in self.parts:
+            p[6] = 0.0
+            p[0].hidden = True
+
+
 def make_bump():
     pal = make_palette((0, 0x23232A, 0x7D7D88), True)
     bmp = displayio.Bitmap(12, 4, 3)
@@ -649,8 +708,13 @@ class Game:
         for b in self.bumps:
             b.hidden = True
             self.world.append(b)
+        self.mark_bmp = displayio.Bitmap(40, 2, 2)    # Reifenspur vom Burnout
+        self.mark = displayio.TileGrid(self.mark_bmp, y=116,
+                                       pixel_shader=make_palette((0, 0x1E1E24), True))
+        self.world.append(self.mark)
         self.rider = displayio.Group()
         self.world.append(self.rider)
+        self.smoke = Smoke(self.world)
         self.frames = build_frames(self.rider)
         self.frame = 0
         self.frames[0].hidden = False
@@ -713,6 +777,13 @@ class Game:
         self.hop_t = 0.0
         self.crash_t = 0.0
         self.next_bump = 30.0
+        self.burn = False       # Burnout läuft (A + B)
+        self.burn_t = 0.0
+        self.boost_t = 0.0      # Turbo-Start nach dem Burnout
+        self.smoke_acc = 0.0
+        self.mark_s = -999.0    # wo die Reifenspur liegt (m)
+        self.mark_len = 0
+        self.last_px = 0
         self.bump_pos = [-100.0, -100.0]
 
     def goto_title(self):
@@ -779,13 +850,14 @@ class Game:
                 self.l_toast.hide()
 
         gas = self.state == PLAY and b.held & BTN_A
-        self.sound.update(dt, self.v / VMAX if self.state != PAUSE else 0, gas)
+        self.sound.update(dt, self.v / VMAX if self.state != PAUSE else 0, gas,
+                          self.state == PLAY and self.burn)
         self.draw(dt)
 
     def update_title(self, dt):
         b = self.btn
-        self.l_help.set("OBEN = WHEELIE AN/AUS" if int(self.t / 2) % 2 else
-                        "A = GAS   B = BREMSE", 80, 48, 1)
+        self.l_help.set(("A = GAS   B = BREMSE", "OBEN = WHEELIE AN/AUS",
+                         "A + B = BURNOUT")[int(self.t / 2) % 3], 80, 48, 1)
         if b.held & BTN_START:
             # START gedrückt halten = Rekord löschen
             if self.start_hold < 0:
@@ -819,6 +891,8 @@ class Game:
         elif gas:
             f = v / VMAX
             v += ACCEL * dt * (1 - 0.6 * f * f)        # oben raus zieht er weniger
+            if self.boost_t > 0:
+                v += LAUNCH_BOOST * dt
         elif v < CRUISE:
             v = min(CRUISE, v + CRUISE_ACCEL * dt)     # rollt von allein
         else:
@@ -854,6 +928,16 @@ class Game:
                 self.landing = True        # nochmal OBEN: sanft landen
             else:
                 self.wmode = False
+        burn = bool(gas and brake) and not self.wmode and self.th == 0
+        if burn and not self.burn:
+            self.start_burnout()
+        elif self.burn and not burn:
+            self.end_burnout(gas)
+        self.burn = burn
+        if burn:
+            self.update_burnout(dt)
+        if self.boost_t > 0:
+            self.boost_t -= dt
         landed = False
         s_before = self.s
         steps = int(dt / 0.01) + 1
@@ -901,6 +985,41 @@ class Game:
                     k = 0.4 + 0.6 * self.v / VMAX
                     self.om += random.uniform(-0.7, 1.1) * k
                 self.sound.play(((90, 0.05),))
+
+    def start_burnout(self):
+        self.burn_t = 0.0
+        self.hud_t = 1.0
+        self.result_t = 0.0
+        self.mark_bmp.fill(0)
+        self.mark_s = self.s
+        self.mark_len = 0
+        self.l_big.set("BURNOUT!", 80, 14, 1)
+        self.l_sub.hide()
+
+    def update_burnout(self, dt):
+        self.burn_t += dt
+        self.mark_s = self.s                      # Spur bleibt unterm Hinterrad
+        n = min(40, int(self.burn_t * 30))        # Reifenspur wird länger
+        if n > self.mark_len:
+            rect(self.mark_bmp, 40 - n, 0, 40 - self.mark_len, 2, 1)
+            self.mark_len = n
+        self.smoke_acc += dt * 16                 # ca. 16 Rauchwolken pro Sekunde
+        while self.smoke_acc >= 1:
+            self.smoke_acc -= 1
+            self.smoke.emit(REAR_X - 3 + random.randint(-2, 2), AXLE_Y + 3)
+        self.hud_t += dt
+        if self.hud_t >= 0.1:
+            self.hud_t = 0.0
+            self.l_sub.set("%.1f S" % self.burn_t, 80, 33, 1)
+
+    def end_burnout(self, gas):
+        if self.result_t <= 0:
+            self.l_big.hide()
+            self.l_sub.hide()
+        if gas and self.burn_t >= 1.0:            # B losgelassen, A noch drin: Turbo-Start
+            self.boost_t = 1.5
+            self.toast("LAUNCH!")
+            self.sound.play(((392, 0.06), (587, 0.06), (880, 0.12)))
 
     def end_wheelie(self):
         self.in_wheelie = False
@@ -1004,6 +1123,18 @@ class Game:
         if self.hop_t > 0:
             self.hop_t -= dt
         self.rider.y = -1 if self.hop_t > 0 else 0
+        self.rider.x = int(self.t * 30) % 2 if self.burn and self.state == PLAY else 0
+
+        # Burnout: Rauch und Reifenspur
+        dpx = px - self.last_px
+        self.last_px = px
+        self.smoke.update(dt if self.state != PAUSE else 0, dpx if 0 <= dpx < 100 else 0)
+        x = REAR_X + 3 - 40 + int((self.mark_s - self.s) * PX_PER_M)
+        if self.mark_len and -40 < x < W:
+            self.mark.x = x
+            self.mark.hidden = False
+        else:
+            self.mark.hidden = True
 
         # Anzeigen (nur neu schreiben, wenn sich etwas ändert)
         key = (int(self.store.best * 10), playing)
@@ -1046,6 +1177,8 @@ class Game:
             L.set(*((30 * (1 - h), 30 * h, 0) if h < 1 else
                     (0, 30 * (2 - h), 30 * (h - 1)) if h < 2 else
                     (30 * (h - 2), 0, 30 * (3 - h))))
+        elif self.state == PLAY and self.burn:
+            L.set(40, 8 + 12 * (int(self.t * 15) % 2), 0)
         elif self.state == PLAY and self.in_wheelie:
             f = min(self.th / CRASH_RAD, 1.0)
             L.set(int(40 * min(1, f * 1.6)), int(30 * min(1, (1 - f) * 2.2)), 0)

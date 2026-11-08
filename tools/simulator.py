@@ -252,6 +252,20 @@ def main():
     r.shot("7_vollgas.png")
     r.run(0.5, keys=[])
 
+    # Burnout: A + B gedrückt halten, dann B loslassen = Turbo-Start
+    r.run(6.0, keys=[A, B])
+    assert g.burn and g.v == 0 and g.th == 0, (g.burn, g.v)
+    assert sum(1 for p in g.smoke.parts if p[6] > 0) >= 5, "Rauch"
+    assert not g.mark.hidden and g.mark_len == 40, "Reifenspur"
+    assert g.l_big.text == "BURNOUT!"
+    r.shot("8_burnout.png")
+    print("Burnout: %.1f s" % g.burn_t)
+    r.run(0.3, keys=[A])
+    assert not g.burn and g.boost_t > 0 and g.l_toast.text == "LAUNCH!"
+    r.run(1.5, keys=[A])
+    print("Nach Turbo-Start: %.0f km/h" % (g.v * 3.6))
+    r.run(0.5, keys=[])
+
     # Pause
     r.run(0.1, keys=[START])
     r.run(0.1, keys=[])
