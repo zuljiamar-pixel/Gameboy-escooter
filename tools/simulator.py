@@ -1,4 +1,4 @@
-"""Desktop-Simulator für code.py (nur zum Entwickeln/Testen, nicht für den PyBadge).
+"""Desktop-Simulator für code.py + grafik.py (nur zum Entwickeln/Testen, nicht für den PyBadge).
 
 Rendert das Spiel mit Adafruits Blinka-displayio (reines Python) in Bilder,
 steuert die Knöpfe per Skript und prüft dabei die Spiellogik.
@@ -124,6 +124,9 @@ def install_fakes():
 
 def load_game():
     display, micro = install_fakes()
+    root = os.path.dirname(os.path.abspath(GAME))
+    if root not in sys.path:
+        sys.path.insert(0, root)     # damit "import grafik" klappt
     spec = importlib.util.spec_from_file_location("wheelie", GAME)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

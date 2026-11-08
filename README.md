@@ -69,16 +69,22 @@ diesen Schritt überspringen.
 
 ### 2. Das Spiel kopieren
 
-1. Lade die Datei [`code.py`](code.py) aus diesem Repository herunter
-   (auf GitHub: Datei öffnen → Knopf „Download raw file“).
-2. Kopiere sie auf das Laufwerk **CIRCUITPY** und ersetze dort die
-   vorhandene `code.py`.
+1. Lade die **zwei** Dateien [`code.py`](code.py) und [`grafik.py`](grafik.py)
+   aus diesem Repository herunter (auf GitHub: Datei öffnen → Knopf
+   „Download raw file“).
+2. Kopiere **beide** auf das Laufwerk **CIRCUITPY** und ersetze dort die
+   vorhandene `code.py`. Die Dateien müssen genau `code.py` und `grafik.py`
+   heißen.
 3. Fertig! Das Spiel startet nach ein paar Sekunden von selbst. Ab jetzt
    startet es jedes Mal, wenn du den PyBadge einschaltest, auch ohne
    Computer mit Akku.
 
-Es werden **keine zusätzlichen Bibliotheken** gebraucht. Alles steckt in
-der einen Datei.
+Es werden **keine zusätzlichen Bibliotheken** gebraucht. Das Spiel ist auf
+zwei Dateien aufgeteilt, weil der PyBadge nur wenig Arbeitsspeicher hat und
+eine einzige große Datei nicht mehr laden konnte.
+
+Wenn etwas schiefgeht, bleibt eine Fehlermeldung („FEHLER: …“) auf dem
+Bildschirm stehen.
 
 ## Schwierigkeit anpassen
 
@@ -96,8 +102,9 @@ Datei speichern, und der PyBadge startet das Spiel automatisch neu.
 
 ## Probleme?
 
-* **Bildschirm zeigt eine Fehlermeldung:** Prüfe, ob CircuitPython 9 oder
-  neuer installiert ist (Datei `boot_out.txt` auf CIRCUITPY zeigt die Version).
+* **Bildschirm zeigt eine Fehlermeldung:** Prüfe, ob `code.py` **und**
+  `grafik.py` auf CIRCUITPY liegen und ob CircuitPython 9 oder neuer
+  installiert ist (Datei `boot_out.txt` auf CIRCUITPY zeigt die Version).
 * **Kein Ton:** Mit SELECT einschalten. Manche PyBadge-LC-Versionen haben
   keinen Lautsprecher, das Spiel läuft dann einfach ohne Ton.
 * **Laufwerk erscheint nicht:** anderes USB-Kabel probieren (Datenkabel!).
