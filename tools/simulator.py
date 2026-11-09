@@ -13,6 +13,7 @@ Erzeugt Screenshots (PNG) und eine Animation (GIF) im Ausgabe-Ordner.
 import importlib.util
 import math
 import os
+import struct
 import sys
 import types
 from array import array
@@ -200,6 +201,7 @@ def main():
     r = Runner(out)
     g = r.game
     m = r.mod
+    m.RAMPS = False        # Rampen erst im Rampen-Test, damit die anderen Tests planbar bleiben
 
     r.run(1.0)
     r.shot("1_titel.png")
@@ -226,7 +228,7 @@ def main():
     r.shot("3_ergebnis.png")
     assert not g.in_wheelie and not g.wmode
     assert g.store.best > 5, g.store.best
-    saved = m.struct.unpack("<f", bytes(r.micro.nvm[4:8]))[0]
+    saved = struct.unpack("<f", bytes(r.micro.nvm[4:8]))[0]
     assert abs(saved - g.store.best) < 0.01, "Rekord im nvm gespeichert"
     print("Rekord: %.1f m (im nvm: %.1f m)" % (g.store.best, saved))
 
@@ -266,7 +268,7 @@ def main():
         r.run(0.5, keys=[])
         assert not g.in_wheelie and g.state == m.PLAY
     assert g.store.tbest > tbest_before, "Trick-Rekord"
-    tb = int(m.struct.unpack("<f", bytes(r.micro.nvm[8:12]))[0])
+    tb = int(struct.unpack("<f", bytes(r.micro.nvm[8:12]))[0])
     assert tb == g.store.tbest, (tb, g.store.tbest)
     print("Trick-Rekord: %d Punkte (im nvm: %d)" % (g.store.tbest, tb))
 
@@ -291,6 +293,34 @@ def main():
     print("Nach Turbo-Start: %.0f km/h" % (g.v * 3.6))
     r.run(0.5, keys=[])
 
+    # Rampe: springen, in der Luft Knie-Einhänder, sauber landen = Punkte
+    m.RAMPS = True
+    g.next_ramp = g.s + 14
+    pts_before = g.store.points
+    r.run(5.0, keys=[A], controller=lambda game: [A, LEFT, DOWN] if game.air else [A])
+    assert not g.air and g.state == m.PLAY and g.store.points > pts_before, (g.air, g.state)
+    print("Sprung: +%d Punkte" % (g.store.points - pts_before))
+    g.next_ramp = g.s + 14
+    for _ in range(200):
+        r.run(1 / 30, keys=[A], record_every=0)
+        if g.air and g.alt > 1.0:
+            break
+    assert g.air
+    r.shot("13_sprung.png")
+    print("Sprung: %.1f m hoch bei %.0f km/h" % (g.alt, g.v * 3.6))
+    r.run(3.0, keys=[A])
+    # Mit No-Hander landen = Sturz
+    g.next_ramp = g.s + 14
+    r.run(5.0, keys=[A, RIGHT])
+    assert g.state == m.CRASH and g.l_sub.text == "OHNE HÄNDE GELANDET!", g.l_sub.text
+    r.shot("14_ohne_haende.png")
+    r.run(1.2, keys=[])
+    r.run(0.1, keys=[A])
+    r.run(0.1, keys=[])
+    assert g.state == m.PLAY
+    m.RAMPS = False
+    g.ramp_s = -100.0
+
     # Pause
     r.run(0.1, keys=[START])
     r.run(0.1, keys=[])
@@ -310,17 +340,55 @@ def main():
     r.run(0.1, keys=[DOWN])
     r.run(0.1, keys=[START])
     r.run(0.7, keys=[])
-    assert g.state == m.PLAY and not g.l_fps.g.hidden and g.l_fps.text.endswith("FPS"), g.l_fps.text
+    assert g.state == m.PLAY and not g.l_fps.g.hidden and "FPS" in g.l_fps.text, g.l_fps.text
     r.run(0.1, keys=[START])
     r.run(0.1, keys=[DOWN])
     r.run(0.1, keys=[START])
     r.run(0.1, keys=[])
     assert g.l_fps.g.hidden and g.state == m.PLAY
 
-    # Neustart des "Geräts": Rekord wird wieder geladen
+    # Farben-Shop im Startbildschirm: RECHTS = nächste Farbe, B = kaufen
+    g.goto_title()
+    g.store.points = 300
+    r.run(0.1, keys=[RIGHT])
+    r.run(0.1, keys=[])
+    assert g.sel == 1 and not g.store.owns(1) and "100 P" in g.l_help.text, g.l_help.text
+    r.shot("15_shop.png")
+    r.run(0.1, keys=[B])
+    r.run(0.1, keys=[])
+    assert g.store.owns(1) and g.store.color == 1 and g.store.points == 200, g.store.points
+    assert g.l_toast.text == "GEKAUFT!"
+    r.run(0.1, keys=[RIGHT])
+    r.run(0.1, keys=[])
+    r.run(0.1, keys=[B])
+    r.run(0.1, keys=[])
+    assert g.sel == 2 and not g.store.owns(2) and g.l_toast.text == "ZU WENIG PUNKTE"
+    for _ in range(4):                 # bis zum Regenbogen weiterschalten
+        r.run(0.1, keys=[RIGHT])
+        r.run(0.1, keys=[])
+    assert g.sel == 6 and g.rainbow
+    r.run(0.5, keys=[])
+    r.shot("16_regenbogen.png")
+    r.run(0.1, keys=[A])               # Start: nicht gekaufte Farbe -> zurück zu Blau
+    r.run(0.3, keys=[])
+    assert g.state == m.PLAY and g.sel == 1 and not g.rainbow
+    r.shot("17_blau.png")
+
+    # Neustart des "Geräts": Rekorde, Punkte und Farben werden wieder geladen
+    g.save()
     g2 = r.mod.Game(FakeDisplay())
     assert abs(g2.store.best - best_before) < 0.01 and not g2.store.sound
     assert g2.store.tbest == g.store.tbest
+    assert g2.store.points == g.store.points and g2.store.owns(1) and g2.store.color == 1
+
+    # Alte Speicherstände (Version 1) bekommen ein leeres Konto, Rekorde bleiben
+    old = bytearray(r.micro.nvm)
+    r.micro.nvm[3] = 1
+    r.micro.nvm[12:18] = b"\xff" * 6
+    g3 = r.mod.Game(FakeDisplay())
+    assert g3.store.points == 0 and g3.store.owned == 1 and g3.store.color == 0
+    assert abs(g3.store.best - best_before) < 0.01
+    r.micro.nvm[:] = old
 
     # Rekord löschen: START 3 s im Titel halten
     g.goto_title()

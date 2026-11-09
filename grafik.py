@@ -1,13 +1,16 @@
-# Grafik für E-SCOOTER WHEELIE (gehört zu code.py, beide Dateien auf CIRCUITPY!)
+# Grafik + Hardware für E-SCOOTER WHEELIE (gehört zu code.py, beide Dateien auf CIRCUITPY!)
 #
-# Hier wird alles gemalt: Schrift, Hintergrund, Scooter, Fahrer, Rauch.
-# Das meiste davon läuft nur einmal beim Start.
+# Hier wird alles gemalt (Schrift, Hintergrund, Scooter, Fahrer, Rauch, Rampe)
+# und hier sind die Helfer für Knöpfe, LEDs, Ton und Speicher.
 
 import binascii
 import math
 import random
+import struct
 
+import board
 import displayio
+import keypad
 import vectorio
 from bitmaptools import fill_region
 
@@ -196,8 +199,6 @@ def draw_scooter(cv, th):
     def S(x, y):    # Scooter-Koordinaten (Hinterachse = 0,0) -> Bild
         return (ox + x * ct - y * st, oy - x * st - y * ct)
 
-    fx = WHEELBASE * ct      # Schatten auf der Straße
-    cv.span(int(ox + min(0, fx)) - 5, int(ox + max(0, fx)) + 4, oy + 5, C_SHADOW)
     cv.circle(S(0, 0), WHEEL_R, C_TIRE)
     cv.circle(S(0, 0), 1.8, C_HUB)
     cv.poly((S(-3, 0.6), S(21, 0.6), S(21, -2.6), S(-3, -2.6)), C_BODY)
@@ -451,6 +452,41 @@ def make_tree():
     return displayio.TileGrid(bmp, pixel_shader=pal, y=101 - 28)
 
 
+def make_shadow():
+    # Schatten unter dem Scooter: 10 Kacheln à 4 Pixel, so kann er kürzer werden
+    bmp = displayio.Bitmap(8, 1, 2)
+    rect(bmp, 4, 0, 8, 1, 1)
+    tg = displayio.TileGrid(bmp, pixel_shader=make_palette((0, 0x26262E), True),
+                            width=10, height=1, tile_width=4, tile_height=1,
+                            x=REAR_X - 5, y=AXLE_Y + 5)
+    for i in range(10):
+        tg[i] = 1
+    return tg
+
+
+def make_ramp():
+    # Holzrampe, 40 x 12 Pixel, links flach, rechts hoch
+    pal = make_palette((0, 0x8A6A3E, 0xD9B77A, 0x5A4326, 0xFFD23F), True)
+    bmp = displayio.Bitmap(40, 12, 5)
+    for x in range(40):
+        h = (x + 1) * 12 // 40
+        rect(bmp, x, 12 - h, x + 1, 12, 1)
+        rect(bmp, x, 12 - h, x + 1, 13 - h, 2)
+        if x % 8 < 4 and h > 3:                 # gelbe Warnstreifen
+            rect(bmp, x, 12 - h + 2, x + 1, 13 - h + 2, 4)
+    rect(bmp, 37, 0, 40, 12, 3)
+    return displayio.TileGrid(bmp, pixel_shader=pal, y=AXLE_Y + 5 - 12)
+
+
+def rainbow(h):
+    # Regenbogenfarbe für h zwischen 0 und 1
+    i = int(h * 6) % 6
+    f = int((h * 6 - int(h * 6)) * 255)
+    r, g, b = ((255, f, 0), (255 - f, 255, 0), (0, 255, f),
+               (0, 255 - f, 255), (f, 0, 255), (255, 0, 255 - f))[i]
+    return (r << 16) | (g << 8) | b
+
+
 def make_bump():
     pal = make_palette((0, 0x23232A, 0x7D7D88), True)
     bmp = displayio.Bitmap(12, 4, 3)
@@ -506,3 +542,215 @@ class Smoke:
             tg.x = int(p[1]) - 6
             tg.y = int(p[2]) - 6
             tg.hidden = False
+
+
+# ------------------------------------------------------------------
+# Hardware-Helfer: Knöpfe, LEDs, Ton, Speicher
+# ------------------------------------------------------------------
+class Buttons:
+    def __init__(self):
+        # Reihenfolge am Schieberegister: B, A, START, SELECT, rechts, runter, hoch, links
+        self.keys = keypad.ShiftRegisterKeys(
+            clock=board.BUTTON_CLOCK, data=board.BUTTON_OUT,
+            latch=board.BUTTON_LATCH, key_count=8, value_when_pressed=True)
+        self.held = 0
+        self.pressed = 0
+        self.released = 0
+
+    def poll(self):
+        self.pressed = 0
+        self.released = 0
+        ev = self.keys.events.get()
+        while ev:
+            bit = 1 << ev.key_number
+            if ev.pressed:
+                self.held |= bit
+                self.pressed |= bit
+            else:
+                self.held &= ~bit
+                self.released |= bit
+            ev = self.keys.events.get()
+        if self.keys.events.overflowed:
+            self.keys.events.clear()
+            self.keys.reset()
+            self.held = 0
+
+
+class Pixels:
+    # Die NeoPixel-LED(s) unter dem Bildschirm (ohne Zusatz-Bibliothek).
+
+    def __init__(self):
+        self.pin = None
+        self.last = None
+        self.buf = bytearray(15)
+        try:
+            import digitalio
+            import neopixel_write
+            self.pin = digitalio.DigitalInOut(board.NEOPIXEL)
+            self.pin.switch_to_output()
+            self.write = neopixel_write.neopixel_write
+        except Exception:  # pylint: disable=broad-except
+            self.pin = None
+
+    def set(self, r, g, b):
+        if self.pin is None:
+            return
+        c = (int(g) & 255, int(r) & 255, int(b) & 255)
+        if c == self.last:
+            return
+        self.last = c
+        for i in range(5):
+            self.buf[3 * i:3 * i + 3] = bytes(c)
+        try:
+            self.write(self.pin, self.buf)
+        except Exception:  # pylint: disable=broad-except
+            self.pin = None
+
+
+class Sound:
+    # Einfache Töne über den eingebauten Lautsprecher (synthio).
+
+    def __init__(self, on):
+        self.ok = False
+        self.on = on
+        self.seq = []
+        self.cur = None
+        self.t = 0.0
+        try:
+            import array
+            import audioio
+            import digitalio
+            import synthio
+            self.synthio = synthio
+            self.enable = digitalio.DigitalInOut(board.SPEAKER_ENABLE)
+            self.enable.switch_to_output(value=on)
+            self.audio = audioio.AudioOut(board.SPEAKER)
+            self.synth = synthio.Synthesizer(sample_rate=16000)
+            self.audio.play(self.synth)
+            n = 32
+            self.saw = array.array("h", [int(-28000 + 56000 * i / n) for i in range(n)])
+            self.sq = array.array("h", [20000] * (n // 2) + [-20000] * (n // 2))
+            self.env = synthio.Envelope(attack_time=0.003, decay_time=0.0,
+                                        release_time=0.03, attack_level=1.0,
+                                        sustain_level=1.0)
+            self.engine = synthio.Note(frequency=120, waveform=self.saw,
+                                       envelope=self.env, amplitude=0.0)
+            self.synth.press(self.engine)
+            noise = array.array("h", [random.randint(-20000, 20000) for _ in range(64)])
+            self.screech = synthio.Note(frequency=180, waveform=noise,
+                                        envelope=self.env, amplitude=0.0)
+            self.synth.press(self.screech)
+            self.ok = True
+        except Exception as e:  # pylint: disable=broad-except
+            print("Kein Ton:", e)
+
+    def set_on(self, on):
+        self.on = on
+        if self.ok:
+            try:
+                self.enable.value = on
+            except Exception:  # pylint: disable=broad-except
+                pass
+            if not on:
+                self.seq = []
+                self._next()
+
+    def play(self, notes):
+        # notes: Liste von (Frequenz, Dauer). Frequenz 0 = Pause.
+        if not (self.ok and self.on):
+            return
+        self.seq = list(notes)
+        self._next()
+
+    def _next(self):
+        try:
+            if self.cur is not None:
+                self.synth.release(self.cur)
+                self.cur = None
+            if self.seq:
+                f, self.t = self.seq.pop(0)
+                if f > 0:
+                    self.cur = self.synthio.Note(frequency=f, waveform=self.sq,
+                                                 envelope=self.env, amplitude=0.3)
+                    self.synth.press(self.cur)
+        except Exception:  # pylint: disable=broad-except
+            self.ok = False
+
+    def update(self, dt, speed, gas, burn=False):
+        if not self.ok:
+            return
+        if self.cur is not None or self.seq:
+            self.t -= dt
+            if self.t <= 0:
+                self._next()
+        try:
+            amp = 0.0
+            freq = 150 + 600 * speed + (50 if gas else 0)
+            if burn:                          # Motor heult, Reifen quietscht
+                amp = 0.12
+                freq = 650 + random.randint(-80, 80)
+            elif speed > 0.02:
+                amp = 0.04 + (0.05 if gas else 0.0)
+            self.engine.amplitude = amp if self.on else 0.0
+            self.engine.frequency = freq
+            self.screech.amplitude = 0.12 if (burn and self.on) else 0.0
+        except Exception:  # pylint: disable=broad-except
+            self.ok = False
+
+
+SCOOTER_COLORS = (    # Name, Preis in Trick-Punkten, Farbe, dunkle Farbe (-1 = Regenbogen)
+    ("MINT", 0, 0x19C2A0, 0x0E7C68),
+    ("BLAU", 100, 0x2F7DE1, 0x1B4E95),
+    ("PINK", 250, 0xFF5FA2, 0xB03A6E),
+    ("FEUER-ROT", 500, 0xE8322B, 0x8E1A14),
+    ("SCHWARZ", 1000, 0x3A3A46, 0x18181E),
+    ("GOLD", 2000, 0xFFC83D, 0xB07D12),
+    ("REGENBOGEN", 5000, -1, 0x34343E),
+)
+
+
+class Store:
+    # Rekorde, Trick-Punkte-Konto, gekaufte Farben und Ton im nvm-Speicher
+    # (bleibt auch nach dem Ausschalten erhalten)
+
+    def __init__(self):
+        self.best = 0.0         # Wheelie-Rekord (m)
+        self.tbest = 0          # Trick-Rekord (Punkte)
+        self.sound = True
+        self.points = 0         # Trick-Punkte zum Ausgeben
+        self.owned = 1          # gekaufte Farben (Bit 0 = Mint, ist immer da)
+        self.color = 0          # gewählte Farbe
+        self.nvm = None
+        try:
+            import microcontroller
+            nvm = microcontroller.nvm
+            self.nvm = nvm
+            if nvm is not None and len(nvm) >= 18 and bytes(nvm[0:2]) == b"EW":
+                self.sound = nvm[2] != 0
+                best, tb = struct.unpack("<ff", bytes(nvm[4:12]))
+                if best == best and 0 <= best < 1e6:   # NaN-Schutz
+                    self.best = best
+                if tb == tb and 0 <= tb < 1e9:
+                    self.tbest = int(tb)
+                if nvm[3] >= 2:                          # ab Version 2: Konto + Farben
+                    pts, owned, color = struct.unpack("<IBB", bytes(nvm[12:18]))
+                    if pts < 100000000:
+                        self.points = pts
+                    self.owned = owned | 1
+                    if color < len(SCOOTER_COLORS) and self.owns(color):
+                        self.color = color
+        except Exception:  # pylint: disable=broad-except
+            self.nvm = None
+
+    def owns(self, i):
+        return bool(self.owned & (1 << i))
+
+    def save(self):
+        if self.nvm is None:
+            return
+        try:
+            self.nvm[0:18] = (b"EW" + bytes((1 if self.sound else 0, 2)) +
+                              struct.pack("<ffIBB", self.best, self.tbest, self.points,
+                                          self.owned, self.color))
+        except Exception:  # pylint: disable=broad-except
+            pass

@@ -5,9 +5,13 @@ geschrieben in CircuitPython.
 
 ![Spiel-Animation](docs/spiel.gif)
 
-| Start | Wheelie | Neuer Rekord | Gestürzt | Burnout | Knie-No-Hander |
-|---|---|---|---|---|---|
-| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) | ![Burnout](docs/burnout.png) | ![Trick](docs/trick.png) |
+| Start | Wheelie | Neuer Rekord | Gestürzt | Burnout |
+|---|---|---|---|---|
+| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) | ![Burnout](docs/burnout.png) |
+
+| Knie-No-Hander | Sprung | Farben-Shop |
+|---|---|---|
+| ![Trick](docs/trick.png) | ![Sprung](docs/sprung.png) | ![Shop](docs/shop.png) |
 
 *(Bilder aus dem Simulator, auf dem PyBadge sieht es genauso aus.)*
 
@@ -23,7 +27,9 @@ geschrieben in CircuitPython.
 | **LINKS** halten | Trick: Einhänder |
 | **RECHTS** halten | Trick: No-Hander (beide Hände hoch) |
 | **RUNTER** halten | Trick: in die Knie |
-| **START** | Pause (in der Pause: RUNTER = Bilder pro Sekunde anzeigen) |
+| **START** | Pause (in der Pause: RUNTER = Bilder pro Sekunde + freier Speicher) |
+| **LINKS / RECHTS** (im Startbildschirm) | Scooter-Farbe aussuchen |
+| **B** (im Startbildschirm) | Farbe mit Trick-Punkten kaufen |
 | **SELECT** | Ton an/aus |
 | **START 3 s halten** (im Startbildschirm) | Rekord löschen |
 
@@ -55,6 +61,23 @@ geschrieben in CircuitPython.
 
   Die Punkte zählen nur, wenn du sauber landest. Der beste Wert wird als
   **Trick-Rekord** gespeichert.
+* **Rampen:** Ab und zu steht eine Holzrampe auf der Straße. Fahr drüber und
+  du springst! In der Luft kannst du Tricks machen, das gibt **Sprung-Punkte**
+  (je länger in der Luft und je schwerer der Trick, desto mehr). Aber Achtung:
+  Wer mit **No-Hander landet, stürzt**. Lass RECHTS also vor der Landung los.
+* **Scooter-Farben:** Alle Trick- und Sprung-Punkte kommen auf dein **Konto**.
+  Im Startbildschirm suchst du mit **LINKS/RECHTS** eine Farbe aus und kaufst
+  sie mit **B**:
+
+  | Farbe | Preis |
+  |---|---|
+  | Mint | gratis |
+  | Blau | 100 P |
+  | Pink | 250 P |
+  | Feuer-Rot | 500 P |
+  | Schwarz | 1000 P |
+  | Gold | 2000 P |
+  | Regenbogen (wechselt die Farbe!) | 5000 P |
 * **Burnout:** Halt **A und B** zusammen gedrückt. Der Scooter bremst ab, das
   Hinterrad dreht durch, es qualmt und gibt eine schwarze Reifenspur. Lässt du
   nach mindestens 1 Sekunde nur **B** los, gibt es einen **Turbo-Start**.

@@ -8,6 +8,8 @@
 #   RUNTER = Trick: in die Knie    (Tricks kann man kombinieren!)
 #   START  = Pause (in der Pause: RUNTER = Bilder pro Sekunde anzeigen)
 #   SELECT = Ton an/aus
+#   Rampen = Springen! In der Luft gehen Tricks, aber nicht ohne Hände landen.
+#   Im Startbildschirm: LINKS/RECHTS = Scooter-Farbe, B = Farbe mit Trick-Punkten kaufen
 #
 # Ziel: Fahr einen möglichst langen Wheelie! Im Wheelie-Mode musst du mit
 # A und B die Balance halten. Wenn das Vorderrad wieder aufsetzt, wird die
@@ -21,12 +23,10 @@
 import gc
 import math
 import random
-import struct
 import time
 
 import board
 import displayio
-import keypad
 
 # ------------------------------------------------------------------
 # EINSTELLUNGEN - hier kannst du das Spiel leichter/schwerer machen
@@ -52,6 +52,9 @@ LAND_TORQUE = 5.0     # sanftes Landen mit nochmal OBEN
 LAND_SPEED = 1.6      # so schnell senkt sich das Vorderrad beim Landen (rad/s)
 BUMPS = True          # Gullydeckel, die dich durchschütteln
 MIN_WHEELIE = 0.5     # so viele Meter muss ein Wheelie mindestens haben
+RAMPS = True          # Rampen zum Springen
+JUMP_GRAVITY = 7.0    # Schwerkraft beim Sprung (kleiner = länger in der Luft)
+MAX_JUMP = 4.8        # höchste Absprung-Geschwindigkeit nach oben (m/s)
 
 # ------------------------------------------------------------------
 # Feste Werte
@@ -66,6 +69,9 @@ PHI0 = math.radians(90 - BALANCE_DEG)
 CRASH_RAD = math.radians(CRASH_DEG)
 LEAN = 0.5                    # Fahrer lehnt sich nur halb so weit zurück
 PROP_PERIOD = 240             # Abstand, in dem sich Laternen/Bäume wiederholen
+RAMP_LEN = 40 / PX_PER_M      # Rampe: 40 Pixel lang ...
+RAMP_H = 12 / PX_PER_M        # ... und 12 Pixel hoch (in Metern)
+RAMP_ANGLE = math.atan2(12, 40)
 
 BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_RIGHT, BTN_DOWN, BTN_UP, BTN_LEFT = \
     1, 2, 4, 8, 16, 32, 64, 128
@@ -75,7 +81,7 @@ TITLE, PLAY, PAUSE, CRASH = 0, 1, 2, 3
 # Die Grafik steckt in grafik.py (so muss der PyBadge nie alles auf einmal laden)
 try:
     import grafik as gfx
-    W, REAR_X, AXLE_Y = gfx.W, gfx.REAR_X, gfx.AXLE_Y
+    W, REAR_X, AXLE_Y, WHEELBASE_PX = gfx.W, gfx.REAR_X, gfx.AXLE_Y, gfx.WHEELBASE
     LOAD_ERROR = None
 except Exception as e:  # pylint: disable=broad-except
     LOAD_ERROR = e
@@ -125,201 +131,14 @@ def show_error(e):
 
 
 # ------------------------------------------------------------------
-# Hardware-Helfer: Knöpfe, LEDs, Ton, Speicher
-# ------------------------------------------------------------------
-class Buttons:
-    def __init__(self):
-        # Reihenfolge am Schieberegister: B, A, START, SELECT, rechts, runter, hoch, links
-        self.keys = keypad.ShiftRegisterKeys(
-            clock=board.BUTTON_CLOCK, data=board.BUTTON_OUT,
-            latch=board.BUTTON_LATCH, key_count=8, value_when_pressed=True)
-        self.held = 0
-        self.pressed = 0
-        self.released = 0
-
-    def poll(self):
-        self.pressed = 0
-        self.released = 0
-        ev = self.keys.events.get()
-        while ev:
-            bit = 1 << ev.key_number
-            if ev.pressed:
-                self.held |= bit
-                self.pressed |= bit
-            else:
-                self.held &= ~bit
-                self.released |= bit
-            ev = self.keys.events.get()
-        if self.keys.events.overflowed:
-            self.keys.events.clear()
-            self.keys.reset()
-            self.held = 0
-
-
-class Pixels:
-    """Die NeoPixel-LED(s) unter dem Bildschirm (ohne Zusatz-Bibliothek)."""
-
-    def __init__(self):
-        self.pin = None
-        self.last = None
-        self.buf = bytearray(15)
-        try:
-            import digitalio
-            import neopixel_write
-            self.pin = digitalio.DigitalInOut(board.NEOPIXEL)
-            self.pin.switch_to_output()
-            self.write = neopixel_write.neopixel_write
-        except Exception:  # pylint: disable=broad-except
-            self.pin = None
-
-    def set(self, r, g, b):
-        if self.pin is None:
-            return
-        c = (int(g) & 255, int(r) & 255, int(b) & 255)
-        if c == self.last:
-            return
-        self.last = c
-        for i in range(5):
-            self.buf[3 * i:3 * i + 3] = bytes(c)
-        try:
-            self.write(self.pin, self.buf)
-        except Exception:  # pylint: disable=broad-except
-            self.pin = None
-
-
-class Sound:
-    """Einfache Töne über den eingebauten Lautsprecher (synthio)."""
-
-    def __init__(self, on):
-        self.ok = False
-        self.on = on
-        self.seq = []
-        self.cur = None
-        self.t = 0.0
-        try:
-            import array
-            import audioio
-            import digitalio
-            import synthio
-            self.synthio = synthio
-            self.enable = digitalio.DigitalInOut(board.SPEAKER_ENABLE)
-            self.enable.switch_to_output(value=on)
-            self.audio = audioio.AudioOut(board.SPEAKER)
-            self.synth = synthio.Synthesizer(sample_rate=16000)
-            self.audio.play(self.synth)
-            n = 32
-            self.saw = array.array("h", [int(-28000 + 56000 * i / n) for i in range(n)])
-            self.sq = array.array("h", [20000] * (n // 2) + [-20000] * (n // 2))
-            self.env = synthio.Envelope(attack_time=0.003, decay_time=0.0,
-                                        release_time=0.03, attack_level=1.0,
-                                        sustain_level=1.0)
-            self.engine = synthio.Note(frequency=120, waveform=self.saw,
-                                       envelope=self.env, amplitude=0.0)
-            self.synth.press(self.engine)
-            noise = array.array("h", [random.randint(-20000, 20000) for _ in range(64)])
-            self.screech = synthio.Note(frequency=180, waveform=noise,
-                                        envelope=self.env, amplitude=0.0)
-            self.synth.press(self.screech)
-            self.ok = True
-        except Exception as e:  # pylint: disable=broad-except
-            print("Kein Ton:", e)
-
-    def set_on(self, on):
-        self.on = on
-        if self.ok:
-            try:
-                self.enable.value = on
-            except Exception:  # pylint: disable=broad-except
-                pass
-            if not on:
-                self.seq = []
-                self._next()
-
-    def play(self, notes):
-        """notes: Liste von (Frequenz, Dauer). Frequenz 0 = Pause."""
-        if not (self.ok and self.on):
-            return
-        self.seq = list(notes)
-        self._next()
-
-    def _next(self):
-        try:
-            if self.cur is not None:
-                self.synth.release(self.cur)
-                self.cur = None
-            if self.seq:
-                f, self.t = self.seq.pop(0)
-                if f > 0:
-                    self.cur = self.synthio.Note(frequency=f, waveform=self.sq,
-                                                 envelope=self.env, amplitude=0.3)
-                    self.synth.press(self.cur)
-        except Exception:  # pylint: disable=broad-except
-            self.ok = False
-
-    def update(self, dt, speed, gas, burn=False):
-        if not self.ok:
-            return
-        if self.cur is not None or self.seq:
-            self.t -= dt
-            if self.t <= 0:
-                self._next()
-        try:
-            amp = 0.0
-            freq = 150 + 600 * speed + (50 if gas else 0)
-            if burn:                          # Motor heult, Reifen quietscht
-                amp = 0.12
-                freq = 650 + random.randint(-80, 80)
-            elif speed > 0.02:
-                amp = 0.04 + (0.05 if gas else 0.0)
-            self.engine.amplitude = amp if self.on else 0.0
-            self.engine.frequency = freq
-            self.screech.amplitude = 0.12 if (burn and self.on) else 0.0
-        except Exception:  # pylint: disable=broad-except
-            self.ok = False
-
-
-class Store:
-    """Rekord + Toneinstellung im nichtflüchtigen Speicher (nvm)."""
-
-    def __init__(self):
-        self.best = 0.0
-        self.tbest = 0          # Trick-Rekord (Punkte)
-        self.sound = True
-        self.nvm = None
-        try:
-            import microcontroller
-            self.nvm = microcontroller.nvm
-            if self.nvm is not None and len(self.nvm) >= 8 and bytes(self.nvm[0:2]) == b"EW":
-                self.sound = self.nvm[2] != 0
-                best = struct.unpack("<f", bytes(self.nvm[4:8]))[0]
-                if best == best and 0 <= best < 1e6:   # NaN-Schutz
-                    self.best = best
-                if len(self.nvm) >= 12:
-                    tb = struct.unpack("<f", bytes(self.nvm[8:12]))[0]
-                    if tb == tb and 0 <= tb < 1e9:
-                        self.tbest = int(tb)
-        except Exception:  # pylint: disable=broad-except
-            self.nvm = None
-
-    def save(self):
-        if self.nvm is None:
-            return
-        try:
-            self.nvm[0:12] = (b"EW" + bytes((1 if self.sound else 0, 1)) +
-                              struct.pack("<ff", self.best, self.tbest))
-        except Exception:  # pylint: disable=broad-except
-            pass
-
-
-# ------------------------------------------------------------------
 # Das Spiel
 # ------------------------------------------------------------------
 class Game:
     def __init__(self, display):
-        self.store = Store()
-        self.btn = Buttons()
-        self.leds = Pixels()
-        self.sound = Sound(self.store.sound)
+        self.store = gfx.Store()
+        self.btn = gfx.Buttons()
+        self.leds = gfx.Pixels()
+        self.sound = gfx.Sound(self.store.sound)
 
         font = gfx.make_font()
         self.root = displayio.Group()
@@ -348,6 +167,12 @@ class Game:
         for b in self.bumps:
             b.hidden = True
             self.world.append(b)
+        self.ramp = gfx.make_ramp()
+        self.ramp.hidden = True
+        self.world.append(self.ramp)
+        self.shadow = gfx.make_shadow()
+        self.shadow_n = 10
+        self.world.append(self.shadow)
         self.mark_bmp = displayio.Bitmap(40, 2, 2)    # Reifenspur vom Burnout
         self.mark = displayio.TileGrid(self.mark_bmp, y=116,
                                        pixel_shader=gfx.make_palette((0, 0x1E1E24), True))
@@ -357,6 +182,8 @@ class Game:
         self.smoke = gfx.Smoke(self.world)
         self.frames = gfx.build_frames(self.rider, frame_angles())
         self.figure = gfx.Rider(self.rider)
+        self.spal = self.frames[0].pixel_shader      # Farben des Scooters
+        self.rainbow = False
         gc.collect()
         self.frame = 0
         self.frames[0].hidden = False
@@ -371,9 +198,9 @@ class Game:
         self.l_title1 = gfx.Label(font, hud, 9, 0xFFFFFF, scale=2)
         self.l_title2 = gfx.Label(font, hud, 7, 0xFFD23F, scale=3, shadow=0x8C3B2E)
         self.l_help = gfx.Label(font, hud, 24, 0xFFFFFF)
-        self.l_prompt = gfx.Label(font, hud, 22, 0xFFFFFF)
+        self.l_prompt = gfx.Label(font, hud, 26, 0xFFFFFF)
         self.l_toast = gfx.Label(font, hud, 18, 0xFFFFFF)
-        self.l_fps = gfx.Label(font, hud, 7, 0xFFFFFF)
+        self.l_fps = gfx.Label(font, hud, 14, 0xFFFFFF)
         self.l_fps.hide()
         self.fps = 0.0
         self.fps_t = -1.0
@@ -398,6 +225,8 @@ class Game:
         self.toast_t = 0.0
         self.best_key = None
         self.kmh = -1
+        self.save_t = 0.0
+        self.unsaved = False    # Trick-Punkte noch nicht gespeichert
         self.reset_ride()
         self.goto_title()
 
@@ -431,6 +260,13 @@ class Game:
         self.mark_len = 0
         self.last_px = 0
         self.bump_pos = [-100.0, -100.0]
+        self.alt = 0.0          # Höhe über der Straße (m), z. B. auf der Rampe
+        self.vy = 0.0           # Geschwindigkeit nach oben beim Sprung (m/s)
+        self.air = False        # in der Luft
+        self.air_t = 0.0
+        self.jp = 0.0           # Sprung-Punkte
+        self.ramp_s = -100.0    # wo die nächste Rampe endet (m)
+        self.next_ramp = 60.0
 
     def goto_title(self):
         self.state = TITLE
@@ -440,12 +276,25 @@ class Game:
             l.hide()
         self.l_title1.set("E-SCOOTER", 80, 3, 1)
         self.l_title2.set("WHEELIE", 80, 20, 1)
+        self.shop_t = 0.0
+        self.sel = self.store.color
+        self.apply_color(self.sel)
+
+    def apply_color(self, i):
+        c = gfx.SCOOTER_COLORS[i]
+        self.rainbow = c[2] < 0
+        if not self.rainbow:
+            self.spal[gfx.C_BODY] = c[2]
+        self.spal[gfx.C_DARK] = c[3]
 
     def start_game(self):
         self.state = PLAY
         for l in (self.l_title1, self.l_title2, self.l_help, self.l_prompt):
             l.hide()
         self.reset_ride()
+        if not self.store.owns(self.sel):     # nicht gekaufte Farbe nur angeschaut
+            self.sel = self.store.color
+            self.apply_color(self.sel)
         random.seed(time.monotonic_ns() % 1000003)   # Gullydeckel jedes Mal anders
         self.sound.play(((523, 0.07), (784, 0.1)))
         self.toast("OBEN = WHEELIE")
@@ -462,7 +311,7 @@ class Game:
         if b.pressed & BTN_SELECT:
             self.store.sound = not self.store.sound
             self.sound.set_on(self.store.sound)
-            self.store.save()
+            self.save()
             self.toast("TON AN" if self.store.sound else "TON AUS")
         if dt > 0:
             self.fps += (1 / dt - self.fps) * 0.1
@@ -470,7 +319,8 @@ class Game:
             self.fps_t += dt
             if self.fps_t > 0.5:
                 self.fps_t = 0.0
-                self.l_fps.set("%d FPS" % int(self.fps + 0.5), 2, 118)
+                free = getattr(gc, "mem_free", lambda: 0)() // 1024
+                self.l_fps.set("%d FPS %dK" % (int(self.fps + 0.5), free), 2, 118)
 
         if self.state == TITLE:
             self.update_title(dt)
@@ -495,6 +345,9 @@ class Game:
             if self.toast_t <= 0:
                 self.l_toast.hide()
 
+        self.save_t += dt
+        if self.unsaved and (self.save_t > 15 or self.state != PLAY):
+            self.save()
         gas = self.state == PLAY and b.held & BTN_A
         self.sound.update(dt, self.v / VMAX if self.state != PAUSE else 0, gas,
                           self.state == PLAY and self.burn)
@@ -502,9 +355,11 @@ class Game:
 
     def update_title(self, dt):
         b = self.btn
-        self.l_help.set(("A = GAS   B = BREMSE", "OBEN = WHEELIE AN/AUS",
-                         "A + B = BURNOUT", "STEUERKREUZ = TRICKS")[int(self.t / 2) % 4],
-                        80, 48, 1)
+        shop = self.update_shop(dt)
+        if not shop:
+            self.l_help.set(("A = GAS   B = BREMSE", "OBEN = WHEELIE AN/AUS",
+                             "A + B = BURNOUT", "STEUERKREUZ = TRICKS",
+                             "< > = SCOOTER-FARBEN")[int(self.t / 2) % 5], 80, 48, 1)
         if b.held & BTN_START:
             # START gedrückt halten = Rekord löschen
             if self.start_hold < 0:
@@ -515,7 +370,7 @@ class Game:
             elif self.start_hold >= 3.0 > self.start_hold - dt:
                 self.store.best = 0.0
                 self.store.tbest = 0
-                self.store.save()
+                self.save()
                 self.l_prompt.hide()
                 self.toast("REKORD GELÖSCHT")
                 self.sound.play(((300, 0.1), (200, 0.15)))
@@ -524,12 +379,55 @@ class Game:
                 self.start_game()
                 return
             self.start_hold = -1.0
-            if int(self.t * 2.5) % 2 == 0:
+            if shop:
+                pass
+            elif int(self.t * 2.5) % 2 == 0:
                 self.l_prompt.set("DRÜCK A ZUM STARTEN", 80, 66, 1)
             else:
                 self.l_prompt.hide()
         if b.pressed & BTN_A:
             self.start_game()
+
+    def update_shop(self, dt):
+        # Scooter-Farben: LINKS/RECHTS anschauen, B = mit Trick-Punkten kaufen
+        b = self.btn
+        if b.pressed & (BTN_LEFT | BTN_RIGHT):
+            self.sel = (self.sel + (1 if b.pressed & BTN_RIGHT else -1)) % len(gfx.SCOOTER_COLORS)
+            self.shop_t = 5.0
+            if self.store.owns(self.sel):
+                self.store.color = self.sel
+                self.save()
+            self.apply_color(self.sel)
+            self.sound.play(((660, 0.04),))
+        if self.shop_t <= 0:
+            return False
+        self.shop_t -= dt
+        name, price = gfx.SCOOTER_COLORS[self.sel][:2]
+        owned = self.store.owns(self.sel)
+        if b.pressed & BTN_B and not owned:
+            self.shop_t = 5.0
+            if self.store.points >= price:
+                self.store.points -= price
+                self.store.owned |= 1 << self.sel
+                self.store.color = self.sel
+                self.save()
+                owned = True
+                self.toast("GEKAUFT!")
+                self.record_t = 2.0
+                self.sound.play(((523, 0.08), (784, 0.08), (1047, 0.2)))
+            else:
+                self.toast("ZU WENIG PUNKTE")
+                self.sound.play(((200, 0.15),))
+        self.l_help.set(("< %s >" % name) if owned else ("< %s  %d P >" % (name, price)),
+                        80, 48, 1)
+        self.l_prompt.set(("KONTO %d P" if owned else "B = KAUFEN  KONTO %d P")
+                          % self.store.points, 80, 66, 1)
+        return True
+
+    def save(self):
+        self.store.save()
+        self.unsaved = False
+        self.save_t = 0.0
 
     def physics(self, dt, gas, brake):
         """Ein kleiner Physik-Schritt. Gibt True zurück, wenn das Vorderrad aufsetzt."""
@@ -589,7 +487,7 @@ class Game:
             if self.in_wheelie and (arms or crouch):
                 self.sound.play(((1047, 0.05), (1568, 0.08)))
                 self.hud_t = 1.0
-        burn = bool(gas and brake) and not self.wmode and self.th == 0
+        burn = bool(gas and brake) and not self.wmode and self.th == 0 and self.alt == 0
         if burn and not self.burn:
             self.start_burnout()
         elif self.burn and not burn:
@@ -624,6 +522,9 @@ class Game:
             self.landing = False
             if self.in_wheelie:
                 self.end_wheelie()
+        self.update_ramp(dt, s_before)
+        if self.state != PLAY:
+            return
         self.update_bumps(s_before)
         if self.result_t > 0:
             self.result_t -= dt
@@ -641,13 +542,62 @@ class Game:
             self.next_bump += random.uniform(25, 55)
         for i in range(2):
             p = self.bump_pos[i]
-            if p > 0 and s_before < p <= self.s:
+            if p > 0 and s_before < p <= self.s and self.alt == 0:
                 self.bump_pos[i] = -p
                 self.hop_t = 0.1
                 if self.th > 0:
                     k = 0.4 + 0.6 * self.v / VMAX
                     self.om += random.uniform(-0.7, 1.1) * k
                 self.sound.play(((90, 0.05),))
+
+    def update_ramp(self, dt, s_before):
+        if self.s + 12 > self.next_ramp and self.ramp_s < self.s - 5:
+            if RAMPS:
+                self.ramp_s = self.next_ramp
+                for i in range(2):      # keine Gullydeckel bei der Rampe
+                    p = self.bump_pos[i]
+                    if p > 0 and self.ramp_s - RAMP_LEN - 3 < p < self.ramp_s + 15:
+                        self.bump_pos[i] = p + 20
+            self.next_ramp += random.uniform(90, 180)
+        start = self.ramp_s - RAMP_LEN
+        if self.air:
+            self.vy -= JUMP_GRAVITY * dt
+            self.alt += self.vy * dt
+            self.air_t += dt
+            self.jp += dt * 20 * (1 + trick_rate(self.arms, self.crouch))
+            if self.alt <= 0:
+                self.alt = 0.0
+                self.land_jump()
+        elif s_before < self.ramp_s <= self.s:          # Absprung!
+            self.air = True
+            self.air_t = 0.0
+            self.jp = 5.0
+            self.hud_t = 1.0
+            self.vy = min(self.v * math.sin(RAMP_ANGLE) + 0.5, MAX_JUMP)
+            self.alt = RAMP_H
+            self.sound.play(((600, 0.05), (900, 0.08)))
+        elif start <= self.s < self.ramp_s:             # fährt die Rampe hoch
+            self.alt = (self.s - start) / RAMP_LEN * RAMP_H
+        else:
+            self.alt = 0.0
+
+    def land_jump(self):
+        self.air = False
+        self.vy = 0.0
+        self.hop_t = 0.12
+        if self.arms == 2:
+            self.crash("OHNE HÄNDE GELANDET!")
+            return
+        pts = int(self.jp)
+        self.store.points += pts
+        self.unsaved = True
+        self.sound.play(((80, 0.05), (1047, 0.05), (1319, 0.08)))
+        if self.in_wheelie:
+            self.toast("SPRUNG! +%d" % pts)
+        else:
+            self.l_big.set("+%d P" % pts, 80, 14, 1)
+            self.l_sub.set("SAUBER GELANDET!", 80, 33, 1)
+            self.result_t = 2.0
 
     def start_burnout(self):
         self.burn_t = 0.0
@@ -694,7 +644,7 @@ class Game:
         self.l_big.set("%.1f M" % self.wd, 80, 14, 1)
         if self.wd > self.store.best:
             self.store.best = self.wd
-            self.store.save()
+            self.save()
             self.record_t = 2.5
             self.l_sub.set("NEUER REKORD!", 80, 33, 1)
             self.sound.play(((523, 0.09), (659, 0.09), (784, 0.09), (1047, 0.25)))
@@ -706,16 +656,19 @@ class Game:
             self.sound.play(((880, 0.06), (1175, 0.1)))
         tp = int(self.tp)
         if tp > 0:
+            self.store.points += tp
+            self.unsaved = True
             if tp > self.store.tbest:
                 self.store.tbest = tp
-                self.store.save()
+                self.save()
                 self.toast("TRICK-REKORD %d" % tp)
                 self.record_t = max(self.record_t, 2.5)
             else:
                 self.toast("TRICKS +%d" % tp)
 
-    def crash(self):
+    def crash(self, why=None):
         self.state = CRASH
+        self.air = False
         self.in_wheelie = False
         self.wmode = False
         self.landing = False
@@ -723,7 +676,9 @@ class Game:
         self.shake_t = 0.4
         self.result_t = 0.0
         self.l_big.set("GESTÜRZT!", 80, 14, 1)
-        if self.wd >= MIN_WHEELIE:
+        if why:
+            self.l_sub.set(why, 80, 33, 1)
+        elif self.wd >= MIN_WHEELIE:
             self.l_sub.set("%.1f M ZÄHLT NICHT" % self.wd, 80, 33, 1)
         else:
             self.l_sub.set("AUTSCH!", 80, 33, 1)
@@ -740,6 +695,9 @@ class Game:
             self.th = min(self.th + self.om * dt, limit)
         self.v = max(0.0, self.v - 7.0 * dt)
         self.s += self.v * dt
+        if self.alt > 0:                      # aus der Luft runterfallen
+            self.vy -= JUMP_GRAVITY * dt
+            self.alt = max(0.0, self.alt + self.vy * dt)
         if self.crash_t > 1.0:
             if int(self.t * 2.5) % 2 == 0:
                 self.l_prompt.set("A = NOCHMAL", 80, 62, 1)
@@ -753,8 +711,8 @@ class Game:
                 self.reset_ride()
 
     # ---------------- Zeichnen ----------------
-    def frame_index(self):
-        deg = math.degrees(self.th)
+    def frame_index(self, th):
+        deg = math.degrees(th)
         if deg <= CRASH_DEG:
             return min(int(deg / FRAME_STEP + 0.5), N_PLAY - 1)
         k = int((deg - CRASH_DEG) / ((100 - CRASH_DEG) / 4) + 0.5)
@@ -783,22 +741,46 @@ class Game:
             else:
                 self.bumps[i].hidden = True
 
+        x = REAR_X + int((self.ramp_s - RAMP_LEN - self.s) * PX_PER_M)
+        if -40 < x < W:
+            self.ramp.x = x
+            self.ramp.hidden = False
+        else:
+            self.ramp.hidden = True
+
         # Wackeln beim Sturz
         if self.shake_t > 0:
             self.shake_t -= dt
             self.world.x = random.randint(-2, 2) if self.shake_t > 0 else 0
             self.world.y = random.randint(-2, 2) if self.shake_t > 0 else 0
 
-        # Scooter-Bild passend zum Winkel zeigen
-        i = self.frame_index()
+        # Scooter-Bild passend zum Winkel zeigen (+ Schräglage auf der Rampe)
+        pitch = 0.0
+        start = self.ramp_s - RAMP_LEN
+        if self.air:
+            pitch = RAMP_ANGLE * max(0.0, 1 - self.air_t / 0.5)
+        elif start <= self.s < self.ramp_s:
+            pitch = RAMP_ANGLE
+        elif start - 1.0 <= self.s < start:     # Vorderrad schon auf der Rampe
+            pitch = math.atan2((self.s + 1.0 - start) / RAMP_LEN * RAMP_H, 1.0)
+        th = self.th + pitch
+        i = self.frame_index(th)
         if i != self.frame:
             self.frames[i].hidden = False
             self.frames[self.frame].hidden = True
             self.frame = i
         if self.hop_t > 0:
             self.hop_t -= dt
-        self.rider.y = -1 if self.hop_t > 0 else 0
-        self.figure.update(self.th, self.lean, self.arms, self.crouch)
+        self.rider.y = -int(self.alt * PX_PER_M + 0.5) - (1 if self.hop_t > 0 else 0)
+        self.figure.update(th, self.lean, self.arms, self.crouch)
+        n = int((WHEELBASE_PX * math.cos(th) + 9) / 4 * max(0.3, 1 - self.alt / 2.5) + 0.5)
+        n = min(10, max(1, n))
+        if n != self.shadow_n:                  # Schatten wird kürzer
+            for k in range(10):
+                self.shadow[k] = 1 if k < n else 0
+            self.shadow_n = n
+        if self.rainbow:
+            self.spal[gfx.C_BODY] = gfx.rainbow((self.t * 0.4) % 1)
         self.rider.x = int(self.t * 30) % 2 if self.burn and self.state == PLAY else 0
 
         # Burnout: Rauch und Reifenspur
@@ -813,14 +795,18 @@ class Game:
             self.mark.hidden = True
 
         # Anzeigen (nur neu schreiben, wenn sich etwas ändert)
-        alt = 0 if playing or not self.store.tbest else int(self.t / 3) % 2
-        key = (int(self.store.best * 10), self.store.tbest, playing, alt)
+        alt = 0 if playing else int(self.t / 3) % 3
+        if (alt == 1 and not self.store.tbest) or (alt == 2 and not self.store.points):
+            alt = 0
+        key = (int(self.store.best * 10), self.store.tbest, self.store.points, playing, alt)
         if key != self.best_key:
             self.best_key = key
             if playing:
                 self.l_best.set("REKORD %.1f M" % self.store.best, 2, 2)
-            elif alt:
+            elif alt == 1:
                 self.l_best.set("TRICK-REKORD %d" % self.store.tbest, 80, 57, 1)
+            elif alt == 2:
+                self.l_best.set("KONTO %d P" % self.store.points, 80, 57, 1)
             else:
                 self.l_best.set("REKORD %.1f M" % self.store.best, 80, 57, 1)
         kmh = int(self.v * 3.6 + 0.5)
@@ -843,6 +829,14 @@ class Game:
             self.marker.x = 38 + int(min(self.th / CRASH_RAD, 1.0) * 81)
         self.meter.hidden = not show_meter
         self.marker.hidden = not show_meter
+        if self.state == PLAY and self.air and not self.in_wheelie:
+            self.hud_t += dt
+            if self.hud_t >= 0.1:
+                self.hud_t = 0.0
+                name = trick_name(self.arms, self.crouch)
+                self.l_big.set("SPRUNG!", 80, 14, 1)
+                self.l_sub.set(("AIR %s! +%d" % (name, self.jp)) if name else
+                               ("+%d" % self.jp), 80, 33, 1)
 
         # Rekord blinkt
         if self.record_t > 0:
@@ -860,6 +854,8 @@ class Game:
             L.set(*((30 * (1 - h), 30 * h, 0) if h < 1 else
                     (0, 30 * (2 - h), 30 * (h - 1)) if h < 2 else
                     (30 * (h - 2), 0, 30 * (3 - h))))
+        elif self.state == PLAY and self.air:
+            L.set(16, 0, 40)
         elif self.state == PLAY and self.burn:
             L.set(40, 8 + 12 * (int(self.t * 15) % 2), 0)
         elif self.state == PLAY and self.in_wheelie:
