@@ -27,7 +27,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.join(HERE, "..", "code.py")
 
-B, A, START, SELECT, DOWN, UP = 0, 1, 2, 3, 5, 6
+B, A, START, SELECT, RIGHT, DOWN, UP, LEFT = 0, 1, 2, 3, 4, 5, 6, 7
 
 
 # ------------------------------------------------------------------
@@ -248,6 +248,28 @@ def main():
     r.run(0.1, keys=[])
     assert g.state == m.PLAY
 
+    # Tricks im Wheelie: LINKS = Einhänder, RECHTS = No-Hander, RUNTER = Knie
+    def with_keys(ctl, extra):
+        return lambda game: ctl(game) + extra
+    tbest_before = g.store.tbest
+    for extra, arms, crouch, shot in (([LEFT], 1, False, "9_einhaender.png"),
+                                      ([RIGHT], 2, False, "10_nohander.png"),
+                                      ([DOWN], 0, True, "11_knie.png"),
+                                      ([DOWN, RIGHT], 2, True, "12_knie_nohander.png")):
+        r.run(0.1, keys=[UP])
+        r.run(2.0, controller=with_keys(balance_bot(30), extra))
+        assert g.arms == arms and g.crouch == crouch and g.in_wheelie, (g.arms, g.crouch, g.in_wheelie)
+        assert g.tp > 0 and "!" in g.l_sub.text, g.l_sub.text
+        r.shot(shot)
+        print("Trick %-16s %4d Punkte nach 2 s" % (g.l_sub.text.split("!")[0], g.tp))
+        r.run(1.5, controller=with_keys(balance_bot(30, land_after=0.0), extra))
+        r.run(0.5, keys=[])
+        assert not g.in_wheelie and g.state == m.PLAY
+    assert g.store.tbest > tbest_before, "Trick-Rekord"
+    tb = int(m.struct.unpack("<f", bytes(r.micro.nvm[8:12]))[0])
+    assert tb == g.store.tbest, (tb, g.store.tbest)
+    print("Trick-Rekord: %d Punkte (im nvm: %d)" % (g.store.tbest, tb))
+
     # Vollgas: 100 km/h
     r.run(12.0, keys=[A], record_every=6)
     print("Vollgas: %.0f km/h" % (g.v * 3.6))
@@ -283,23 +305,28 @@ def main():
     r.run(0.1, keys=[])
     assert r.micro.nvm[2] == 0 and not g.store.sound
 
-    # FPS-Anzeige mit RUNTER
+    # FPS-Anzeige: in der Pause RUNTER drücken
+    r.run(0.1, keys=[START])
     r.run(0.1, keys=[DOWN])
+    r.run(0.1, keys=[START])
     r.run(0.7, keys=[])
-    assert not g.l_fps.g.hidden and g.l_fps.text.endswith("FPS"), g.l_fps.text
+    assert g.state == m.PLAY and not g.l_fps.g.hidden and g.l_fps.text.endswith("FPS"), g.l_fps.text
+    r.run(0.1, keys=[START])
     r.run(0.1, keys=[DOWN])
+    r.run(0.1, keys=[START])
     r.run(0.1, keys=[])
-    assert g.l_fps.g.hidden
+    assert g.l_fps.g.hidden and g.state == m.PLAY
 
     # Neustart des "Geräts": Rekord wird wieder geladen
     g2 = r.mod.Game(FakeDisplay())
     assert abs(g2.store.best - best_before) < 0.01 and not g2.store.sound
+    assert g2.store.tbest == g.store.tbest
 
     # Rekord löschen: START 3 s im Titel halten
     g.goto_title()
     r.run(3.3, keys=[START], record_every=0)
     r.run(0.1, keys=[])
-    assert g.store.best == 0 and g.state == m.TITLE
+    assert g.store.best == 0 and g.store.tbest == 0 and g.state == m.TITLE
 
     r.save_gif("wheelie.gif")
     print("Alle Checks OK - Bilder in", os.path.abspath(out))

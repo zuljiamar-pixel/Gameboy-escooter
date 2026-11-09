@@ -4,9 +4,10 @@
 #   A      = Gas geben (bis 100 km/h), im Wheelie: Vorderrad höher
 #   B      = Bremsen, im Wheelie: Vorderrad runter
 #   A + B  = Burnout! (B loslassen = Turbo-Start)
-#   START  = Pause
+#   LINKS  = Trick: Einhänder      RECHTS = Trick: No-Hander
+#   RUNTER = Trick: in die Knie    (Tricks kann man kombinieren!)
+#   START  = Pause (in der Pause: RUNTER = Bilder pro Sekunde anzeigen)
 #   SELECT = Ton an/aus
-#   RUNTER = Bilder pro Sekunde anzeigen (FPS)
 #
 # Ziel: Fahr einen möglichst langen Wheelie! Im Wheelie-Mode musst du mit
 # A und B die Balance halten. Wenn das Vorderrad wieder aufsetzt, wird die
@@ -38,6 +39,9 @@ COAST_DECEL = 1.5     # so schnell wird er ohne Gas wieder langsamer (m/s²)
 BRAKE_DECEL = 7.0     # Bremsen mit B (m/s²), im Wheelie schwächer
 POP = 1.8             # wie kräftig OBEN das Vorderrad hochreißt
 LAUNCH_BOOST = 5.0    # Extra-Beschleunigung nach einem Burnout (m/s²)
+EINHAENDER_KONTROLLE = 0.75   # Einhänder: so viel Kontrolle bleibt dir (1 = alles)
+NOHANDER_KONTROLLE = 0.45     # No-Hander: viel weniger Kontrolle
+KNIE_STABIL = 1.6     # in die Knie: so viel ruhiger wird der Wheelie
 BALANCE_DEG = 42      # Gleichgewichtspunkt des Wheelies (Grad)
 CRASH_DEG = 68        # ab hier kippst du nach hinten um (Grad)
 GRAVITY = 4.0         # wie stark das Vorderrad nach unten will
@@ -63,7 +67,8 @@ CRASH_RAD = math.radians(CRASH_DEG)
 LEAN = 0.5                    # Fahrer lehnt sich nur halb so weit zurück
 PROP_PERIOD = 240             # Abstand, in dem sich Laternen/Bäume wiederholen
 
-BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_DOWN, BTN_UP = 1, 2, 4, 8, 32, 64
+BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_RIGHT, BTN_DOWN, BTN_UP, BTN_LEFT = \
+    1, 2, 4, 8, 16, 32, 64, 128
 
 TITLE, PLAY, PAUSE, CRASH = 0, 1, 2, 3
 
@@ -76,12 +81,23 @@ except Exception as e:  # pylint: disable=broad-except
     LOAD_ERROR = e
 
 
-def frame_specs():
-    # (Winkel, Zurücklehnen) für jedes vorgezeichnete Scooter-Bild
-    specs = [(i * FRAME_STEP, LEAN) for i in range(N_PLAY)]
-    for k in range(1, 5):     # Bilder für den Überschlag
-        specs.append((CRASH_DEG + (100 - CRASH_DEG) * k / 4, LEAN + (1 - LEAN) * k / 4))
-    return specs
+def frame_angles():
+    # Winkel für jedes vorgezeichnete Scooter-Bild (+ 4 Bilder für den Überschlag)
+    return ([i * FRAME_STEP for i in range(N_PLAY)] +
+            [CRASH_DEG + (100 - CRASH_DEG) * k / 4 for k in range(1, 5)])
+
+
+def trick_name(arms, crouch):
+    n = ("", "EINHÄNDER", "NO-HANDER")[arms]
+    if crouch:
+        return "KNIE-" + n if n else "IN DIE KNIE"
+    return n
+
+
+def trick_rate(arms, crouch):
+    # Trick-Punkte pro Meter: schwere Tricks und Kombis bringen mehr
+    r = (0, 1, 3)[arms] + (1 if crouch else 0)
+    return r * 2 if (arms and crouch) else r
 
 
 def show_error(e):
@@ -267,6 +283,7 @@ class Store:
 
     def __init__(self):
         self.best = 0.0
+        self.tbest = 0          # Trick-Rekord (Punkte)
         self.sound = True
         self.nvm = None
         try:
@@ -277,6 +294,10 @@ class Store:
                 best = struct.unpack("<f", bytes(self.nvm[4:8]))[0]
                 if best == best and 0 <= best < 1e6:   # NaN-Schutz
                     self.best = best
+                if len(self.nvm) >= 12:
+                    tb = struct.unpack("<f", bytes(self.nvm[8:12]))[0]
+                    if tb == tb and 0 <= tb < 1e9:
+                        self.tbest = int(tb)
         except Exception:  # pylint: disable=broad-except
             self.nvm = None
 
@@ -284,7 +305,8 @@ class Store:
         if self.nvm is None:
             return
         try:
-            self.nvm[0:8] = b"EW" + bytes((1 if self.sound else 0, 1)) + struct.pack("<f", self.best)
+            self.nvm[0:12] = (b"EW" + bytes((1 if self.sound else 0, 1)) +
+                              struct.pack("<ff", self.best, self.tbest))
         except Exception:  # pylint: disable=broad-except
             pass
 
@@ -333,7 +355,8 @@ class Game:
         self.rider = displayio.Group()
         self.world.append(self.rider)
         self.smoke = gfx.Smoke(self.world)
-        self.frames = gfx.build_frames(self.rider, frame_specs())
+        self.frames = gfx.build_frames(self.rider, frame_angles())
+        self.figure = gfx.Rider(self.rider)
         gc.collect()
         self.frame = 0
         self.frames[0].hidden = False
@@ -385,6 +408,10 @@ class Game:
         self.om = 0.0           # Drehgeschwindigkeit (rad/s)
         self.s = 0.0            # gefahrene Strecke (m)
         self.in_wheelie = False
+        self.lean = LEAN        # wie weit sich der Fahrer zurücklehnt
+        self.arms = 0           # Trick: 0 = normal, 1 = Einhänder, 2 = No-Hander
+        self.crouch = False     # Trick: in die Knie
+        self.tp = 0.0           # Trick-Punkte im aktuellen Wheelie
         self.wmode = False      # Wheelie-Mode an (mit OBEN)
         self.landing = False    # nochmal OBEN gedrückt: sanft landen
         self.wd = 0.0           # Wheelie-Strecke (m)
@@ -437,9 +464,6 @@ class Game:
             self.sound.set_on(self.store.sound)
             self.store.save()
             self.toast("TON AN" if self.store.sound else "TON AUS")
-        if b.pressed & BTN_DOWN:
-            self.fps_t = -1.0 if self.fps_t >= 0 else 0.0
-            self.l_fps.hide()
         if dt > 0:
             self.fps += (1 / dt - self.fps) * 0.1
         if self.fps_t >= 0:
@@ -457,6 +481,9 @@ class Game:
             else:
                 self.update_play(dt, b.held & BTN_A, b.held & BTN_B)
         elif self.state == PAUSE:
+            if b.pressed & BTN_DOWN:          # FPS-Anzeige an/aus
+                self.fps_t = -1.0 if self.fps_t >= 0 else 0.0
+                self.l_fps.hide()
             if b.pressed & (BTN_START | BTN_A):
                 self.state = PLAY
                 self.l_prompt.hide()
@@ -476,7 +503,8 @@ class Game:
     def update_title(self, dt):
         b = self.btn
         self.l_help.set(("A = GAS   B = BREMSE", "OBEN = WHEELIE AN/AUS",
-                         "A + B = BURNOUT")[int(self.t / 2) % 3], 80, 48, 1)
+                         "A + B = BURNOUT", "STEUERKREUZ = TRICKS")[int(self.t / 2) % 4],
+                        80, 48, 1)
         if b.held & BTN_START:
             # START gedrückt halten = Rekord löschen
             if self.start_hold < 0:
@@ -486,6 +514,7 @@ class Game:
                 self.l_prompt.set("REKORD LÖSCHEN... %d" % (3 - int(self.start_hold)), 80, 66, 1)
             elif self.start_hold >= 3.0 > self.start_hold - dt:
                 self.store.best = 0.0
+                self.store.tbest = 0
                 self.store.save()
                 self.l_prompt.hide()
                 self.toast("REKORD GELÖSCHT")
@@ -517,14 +546,18 @@ class Game:
         else:
             v = max(CRUISE, v - COAST_DECEL * dt)
         self.v = min(max(v, 0.0), VMAX)
-        a = -GRAVITY * math.cos(PHI0 + self.th) - DAMPING * self.om
+        damp = DAMPING * (KNIE_STABIL if self.crouch and self.wmode else 1.0)
+        a = -GRAVITY * math.cos(PHI0 + self.th) - damp * self.om
         if self.landing:
             a -= LAND_TORQUE
         elif self.wmode:
+            # Tricks: weniger Hände am Lenker = weniger Kontrolle + mehr Wackeln
+            c = (1.0, EINHAENDER_KONTROLLE, NOHANDER_KONTROLLE)[self.arms]
             if gas:
-                a += LIFT * min(1.0, self.v / 2.0)
+                a += LIFT * c * min(1.0, self.v / 2.0)
             if brake and self.th > 0:
-                a -= BRAKE_TORQUE
+                a -= BRAKE_TORQUE * c
+            a += (0.0, 0.6, 1.5)[self.arms] * math.sin(self.t * 6.3)
         self.om += a * dt
         if self.landing and self.om < -LAND_SPEED:
             self.om = -LAND_SPEED
@@ -547,6 +580,15 @@ class Game:
                 self.landing = True        # nochmal OBEN: sanft landen
             else:
                 self.wmode = False
+        held = self.btn.held
+        arms = 2 if held & BTN_RIGHT else (1 if held & BTN_LEFT else 0)
+        crouch = bool(held & BTN_DOWN)
+        if arms != self.arms or crouch != self.crouch:
+            self.arms = arms
+            self.crouch = crouch
+            if self.in_wheelie and (arms or crouch):
+                self.sound.play(((1047, 0.05), (1568, 0.08)))
+                self.hud_t = 1.0
         burn = bool(gas and brake) and not self.wmode and self.th == 0
         if burn and not self.burn:
             self.start_burnout()
@@ -567,11 +609,13 @@ class Game:
             self.in_wheelie = True
             self.wd = 0.0
             self.wt = 0.0
+            self.tp = 0.0
             self.hud_t = 1.0
             self.result_t = 0.0
         if self.in_wheelie:
             self.wd += self.v * dt
             self.wt += dt
+            self.tp += self.v * dt * trick_rate(self.arms, self.crouch)
         if self.th >= CRASH_RAD:
             self.crash()
             return
@@ -660,6 +704,15 @@ class Game:
                     "MEGA!" if d < 200 else "WAHNSINN!" if d < 500 else "LEGENDE!")
             self.l_sub.set("%s  %.1f S" % (word, self.wt), 80, 33, 1)
             self.sound.play(((880, 0.06), (1175, 0.1)))
+        tp = int(self.tp)
+        if tp > 0:
+            if tp > self.store.tbest:
+                self.store.tbest = tp
+                self.store.save()
+                self.toast("TRICK-REKORD %d" % tp)
+                self.record_t = max(self.record_t, 2.5)
+            else:
+                self.toast("TRICKS +%d" % tp)
 
     def crash(self):
         self.state = CRASH
@@ -678,6 +731,9 @@ class Game:
 
     def update_crash(self, dt):
         self.crash_t += dt
+        self.arms = 2                         # Arme fliegen hoch
+        self.crouch = False
+        self.lean = min(1.0, self.lean + dt * 2)
         limit = math.radians(100)
         if self.th < limit:
             self.om += 6.0 * dt
@@ -742,6 +798,7 @@ class Game:
         if self.hop_t > 0:
             self.hop_t -= dt
         self.rider.y = -1 if self.hop_t > 0 else 0
+        self.figure.update(self.th, self.lean, self.arms, self.crouch)
         self.rider.x = int(self.t * 30) % 2 if self.burn and self.state == PLAY else 0
 
         # Burnout: Rauch und Reifenspur
@@ -756,11 +813,14 @@ class Game:
             self.mark.hidden = True
 
         # Anzeigen (nur neu schreiben, wenn sich etwas ändert)
-        key = (int(self.store.best * 10), playing)
+        alt = 0 if playing or not self.store.tbest else int(self.t / 3) % 2
+        key = (int(self.store.best * 10), self.store.tbest, playing, alt)
         if key != self.best_key:
             self.best_key = key
             if playing:
                 self.l_best.set("REKORD %.1f M" % self.store.best, 2, 2)
+            elif alt:
+                self.l_best.set("TRICK-REKORD %d" % self.store.tbest, 80, 57, 1)
             else:
                 self.l_best.set("REKORD %.1f M" % self.store.best, 80, 57, 1)
         kmh = int(self.v * 3.6 + 0.5)
@@ -775,7 +835,11 @@ class Game:
             if self.hud_t >= 0.1 and self.wd >= 0.3:
                 self.hud_t = 0.0
                 self.l_big.set("%.1f M" % self.wd, 80, 14, 1)
-                self.l_sub.set("%.1f S" % self.wt, 80, 33, 1)
+                name = trick_name(self.arms, self.crouch)
+                if name:
+                    self.l_sub.set("%s! +%d" % (name, int(self.tp)), 80, 33, 1)
+                else:
+                    self.l_sub.set("%.1f S" % self.wt, 80, 33, 1)
             self.marker.x = 38 + int(min(self.th / CRASH_RAD, 1.0) * 81)
         self.meter.hidden = not show_meter
         self.marker.hidden = not show_meter

@@ -5,9 +5,9 @@ geschrieben in CircuitPython.
 
 ![Spiel-Animation](docs/spiel.gif)
 
-| Start | Wheelie | Neuer Rekord | Gestürzt | Burnout |
-|---|---|---|---|---|
-| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) | ![Burnout](docs/burnout.png) |
+| Start | Wheelie | Neuer Rekord | Gestürzt | Burnout | Knie-No-Hander |
+|---|---|---|---|---|---|
+| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) | ![Burnout](docs/burnout.png) | ![Trick](docs/trick.png) |
 
 *(Bilder aus dem Simulator, auf dem PyBadge sieht es genauso aus.)*
 
@@ -20,9 +20,11 @@ geschrieben in CircuitPython.
 | **A** | Gas geben (bis 100 km/h), im Wheelie: Vorderrad höher |
 | **B** | Bremsen, im Wheelie: Vorderrad runter |
 | **A + B** gedrückt halten | Burnout! Danach B loslassen = Turbo-Start |
-| **START** | Pause |
+| **LINKS** halten | Trick: Einhänder |
+| **RECHTS** halten | Trick: No-Hander (beide Hände hoch) |
+| **RUNTER** halten | Trick: in die Knie |
+| **START** | Pause (in der Pause: RUNTER = Bilder pro Sekunde anzeigen) |
 | **SELECT** | Ton an/aus |
-| **RUNTER** (Steuerkreuz) | Bilder pro Sekunde (FPS) anzeigen |
 | **START 3 s halten** (im Startbildschirm) | Rekord löschen |
 
 ## So geht das Spiel
@@ -39,6 +41,20 @@ geschrieben in CircuitPython.
   **Metern** gezählt. Ist sie länger als dein bisheriger Rekord, gibt es einen
   **NEUEN REKORD!** Fällt das Vorderrad von selbst runter, zählt es auch.
 * Wenn du nach hinten umkippst, **zählt der Wheelie nicht**.
+* **Tricks im Wheelie:** Halt **LINKS** (Einhänder), **RECHTS** (No-Hander)
+  oder **RUNTER** (in die Knie). Du kannst sie auch kombinieren, z. B.
+  RUNTER + RECHTS = **Knie-No-Hander**. Tricks bringen **Trick-Punkte**:
+
+  | Trick | Punkte pro Meter | Schwierigkeit |
+  |---|---|---|
+  | Einhänder | 1 | etwas weniger Kontrolle |
+  | In die Knie | 1 | sogar ruhiger |
+  | No-Hander | 3 | viel weniger Kontrolle, wackelt |
+  | Knie-Einhänder | 4 | |
+  | Knie-No-Hander | 8 | |
+
+  Die Punkte zählen nur, wenn du sauber landest. Der beste Wert wird als
+  **Trick-Rekord** gespeichert.
 * **Burnout:** Halt **A und B** zusammen gedrückt. Der Scooter bremst ab, das
   Hinterrad dreht durch, es qualmt und gibt eine schwarze Reifenspur. Lässt du
   nach mindestens 1 Sekunde nur **B** los, gibt es einen **Turbo-Start**.

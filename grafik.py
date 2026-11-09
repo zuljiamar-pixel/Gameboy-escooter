@@ -1,6 +1,6 @@
 # Grafik für E-SCOOTER WHEELIE (gehört zu code.py, beide Dateien auf CIRCUITPY!)
 #
-# Hier wird alles gemalt: Schrift, Hintergrund, Scooter, Rauch.
+# Hier wird alles gemalt: Schrift, Hintergrund, Scooter, Fahrer, Rauch.
 # Das meiste davon läuft nur einmal beim Start.
 
 import binascii
@@ -8,6 +8,7 @@ import math
 import random
 
 import displayio
+import vectorio
 from bitmaptools import fill_region
 
 W, H = 160, 128
@@ -186,8 +187,8 @@ SPRITE_COLORS = (0, 0x17171C, 0xA8AEB6, 0x19C2A0, 0x0E7C68, 0x2E4485, 0x223266,
                  0xE84A3C, 0xF4C7A1, 0xFFD23F, 0x2A2A2A, 0xFFF6B0, 0xFF3030, 0x26262E)
 
 
-def draw_rider(cv, th, lean):
-    # Scooter + Fahrer, Wheelie-Winkel th (rad). Drehpunkt = Hinterachse.
+def draw_scooter(cv, th):
+    # nur der Scooter (ohne Fahrer), Wheelie-Winkel th (rad). Drehpunkt = Hinterachse.
     ct = math.cos(th)
     st = math.sin(th)
     ox, oy = SPR_PX, SPR_PY
@@ -197,7 +198,6 @@ def draw_rider(cv, th, lean):
 
     fx = WHEELBASE * ct      # Schatten auf der Straße
     cv.span(int(ox + min(0, fx)) - 5, int(ox + max(0, fx)) + 4, oy + 5, C_SHADOW)
-
     cv.circle(S(0, 0), WHEEL_R, C_TIRE)
     cv.circle(S(0, 0), 1.8, C_HUB)
     cv.poly((S(-3, 0.6), S(21, 0.6), S(21, -2.6), S(-3, -2.6)), C_BODY)
@@ -209,48 +209,128 @@ def draw_rider(cv, th, lean):
     cv.circle(S(WHEELBASE, 0), WHEEL_R, C_TIRE)
     cv.circle(S(WHEELBASE, 0), 1.8, C_HUB)
 
-    phi = th * lean          # Fahrer lehnt sich nur teilweise mit zurück
-    cp = math.cos(phi)
-    sp = math.sin(phi)
-    mx = 9.5 * ct - 0.6 * st
-    my = 9.5 * st + 0.6 * ct
 
-    def R(x, y):    # Fahrer-Koordinaten (Füße = 0,0) -> Bild
-        return (ox + mx + x * cp - y * sp, oy - my - x * sp - y * cp)
-
-    hip = R(-0.5, 17.5)
-    shoulder = R(1.5, 27.5)
-    for ax, color in ((5.5, C_PANTS2), (14.5, C_PANTS)):
-        knee = R(((ax - 9.5) * 0.5) + 1.8, 9.0)
-        cv.seg(S(ax, 2.0), knee, 3.2, color)
-        cv.circle(knee, 1.6, color)
-        cv.seg(knee, hip, 3.6, color)
-        cv.seg(S(ax - 2, 1.4), S(ax + 2.2, 1.4), 2.2, C_SHOE)
-    cv.seg(hip, shoulder, 5.5, C_SHIRT)
-    cv.circle(R(2.6, 33.2), 3.8, C_SKIN)
-    cv.poly([R(2.6 + 4.4 * math.cos(a), 33.6 + 4.4 * math.sin(a))
-             for a in (0.0, 0.6, 1.2, 1.9, 2.5, 3.14)], C_HELMET)
-    grip = S(20, 22.5)
-    cv.seg(shoulder, grip, 2.4, C_SHIRT)
-    cv.circle(grip, 1.4, C_SKIN)
-
-
-def build_frames(group, specs):
-    # alle Scooter-Bilder einmal vorzeichnen; specs = [(Winkel in Grad, Zurücklehnen), ...]
+def build_frames(group, angles):
+    # alle Scooter-Bilder einmal vorzeichnen (angles = Winkel in Grad)
     pal = make_palette(SPRITE_COLORS, True)
     frames = []
-    for deg, lean in specs:
+    for deg in angles:
         r = Raster()
-        draw_rider(r, math.radians(deg), lean)      # 1. Größe messen
+        draw_scooter(r, math.radians(deg))      # 1. Größe messen
         r.bmp = displayio.Bitmap(r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, len(SPRITE_COLORS))
         r.ox, r.oy = r.x0, r.y0
-        draw_rider(r, math.radians(deg), lean)      # 2. wirklich zeichnen
+        draw_scooter(r, math.radians(deg))      # 2. wirklich zeichnen
         tg = displayio.TileGrid(r.bmp, pixel_shader=pal,
                                 x=REAR_X - SPR_PX + r.x0, y=AXLE_Y - SPR_PY + r.y0)
         tg.hidden = True
         group.append(tg)
         frames.append(tg)
     return frames
+
+
+def quad(shape, a, b, w):
+    # dicke Linie von a nach b als vectorio-Polygon (Enden etwas länger,
+    # damit die Gelenke geschlossen aussehen)
+    dx = b[0] - a[0]
+    dy = b[1] - a[1]
+    d = math.sqrt(dx * dx + dy * dy) or 0.001
+    nx = -dy / d * w * 0.5
+    ny = dx / d * w * 0.5
+    ex = dx / d * 0.6
+    ey = dy / d * 0.6
+    ax, ay = a[0] - ex + 0.5, a[1] - ey + 0.5
+    bx, by = b[0] + ex + 0.5, b[1] + ey + 0.5
+    shape.points = [(int(ax + nx), int(ay + ny)), (int(bx + nx), int(by + ny)),
+                    (int(bx - nx), int(by - ny)), (int(ax - nx), int(ay - ny))]
+
+
+class Rider:
+    # Der Fahrer aus einfachen Formen (vectorio). So kann er Tricks machen,
+    # ohne dass für jede Pose eigene Bilder im Speicher liegen müssen.
+    # arms: 0 = beide Hände am Lenker, 1 = Einhänder, 2 = No-Hander
+    # crouch: True = in die Knie
+
+    def __init__(self, parent):
+        pals = {}
+        self.g = displayio.Group()
+        parent.append(self.g)
+
+        def shape(c, r=0):
+            if c not in pals:
+                pals[c] = make_palette((c,))
+            if r:
+                s = vectorio.Circle(pixel_shader=pals[c], radius=r, x=0, y=0)
+            else:
+                s = vectorio.Polygon(pixel_shader=pals[c], points=[(0, 0), (1, 0), (0, 1)])
+            self.g.append(s)
+            return s
+
+        # Reihenfolge = von hinten nach vorne
+        self.arm_b = (shape(0xB8372D), shape(0xB8372D))     # hinterer Arm
+        self.hand_b = shape(0xF4C7A1, 1)
+        self.leg_b = (shape(0x223266), shape(0x223266))     # hinteres Bein
+        self.shoe_b = shape(0x2A2A2A)
+        self.leg_f = (shape(0x2E4485), shape(0x2E4485))     # vorderes Bein
+        self.shoe_f = shape(0x2A2A2A)
+        self.torso = shape(0xE84A3C)
+        self.head = shape(0xF4C7A1, 4)
+        self.helmet = shape(0xFFD23F)
+        self.arm_f = (shape(0xE84A3C), shape(0xE84A3C))     # vorderer Arm
+        self.hand_f = shape(0xF4C7A1, 1)
+        self.key = None
+
+    def update(self, th, lean, arms, crouch):
+        key = (int(th * 150), int(lean * 20), arms, crouch)
+        if key == self.key:
+            return                # nichts geändert, nichts neu zeichnen
+        self.key = key
+        ct = math.cos(th)
+        st = math.sin(th)
+        phi = th * lean           # Fahrer lehnt sich nur teilweise mit zurück
+        cp = math.cos(phi)
+        sp = math.sin(phi)
+        ox, oy = REAR_X, AXLE_Y
+        mx = 9.5 * ct - 0.6 * st
+        my = 9.5 * st + 0.6 * ct
+
+        def S(x, y):    # Scooter-Koordinaten (Hinterachse = 0,0) -> Bildschirm
+            return (ox + x * ct - y * st, oy - x * st - y * ct)
+
+        def R(x, y):    # Fahrer-Koordinaten (Füße = 0,0) -> Bildschirm
+            return (ox + mx + x * cp - y * sp, oy - my - x * sp - y * cp)
+
+        if crouch:      # in die Knie: alles tiefer, Knie weiter vorne
+            hip, sh, hd, kx, ky = (-4.0, 9.0), (0.5, 18.5), (2.4, 24.0), 6.5, 8.0
+        else:
+            hip, sh, hd, kx, ky = (-0.5, 17.5), (1.5, 27.5), (2.6, 33.2), 1.8, 9.0
+        hip = R(*hip)
+        shoulder = R(*sh)
+        for (shin, thigh), shoe, ax in ((self.leg_b, self.shoe_b, 5.5),
+                                        (self.leg_f, self.shoe_f, 14.5)):
+            knee = R((ax - 9.5) * 0.5 + kx, ky)
+            quad(shin, S(ax, 2.0), knee, 3.2)
+            quad(thigh, knee, hip, 3.6)
+            quad(shoe, S(ax - 2, 1.4), S(ax + 2.2, 1.4), 2.2)
+        quad(self.torso, hip, shoulder, 5.5)
+        x, y = R(*hd)
+        self.head.x = int(x + 0.5)
+        self.head.y = int(y + 0.5)
+        self.helmet.points = [(int(px + 0.5), int(py + 0.5)) for px, py in
+                              (R(hd[0] + 4.6 * math.cos(a), hd[1] + 0.4 + 4.6 * math.sin(a))
+                               for a in (0.0, 0.6, 1.2, 1.9, 2.5, 3.14))]
+        grip = S(20, 22.5)
+        for arm, hand, up, out in ((self.arm_b, self.hand_b, arms >= 1, -1),
+                                   (self.arm_f, self.hand_f, arms == 2, 1)):
+            if up:      # Hand in die Luft
+                elbow = R(sh[0] + 4.0 * out, sh[1] + 5.0)
+                h = R(sh[0] + 7.0 * out, sh[1] + 11.0)
+            else:       # Hand am Lenker
+                h = grip
+                elbow = ((shoulder[0] + grip[0]) * 0.5, (shoulder[1] + grip[1]) * 0.5 + 1.5)
+            quad(arm[0], shoulder, elbow, 2.4)
+            quad(arm[1], elbow, h, 2.2)
+            hand.x = int(h[0] + 0.5)
+            hand.y = int(h[1] + 0.5)
 
 
 class Band:
