@@ -166,6 +166,8 @@ let markLen = 0
 let rampS = -99       // Ende der aktuellen Rampe
 let blitzS = -99      // Position des Blitzers
 let blitzDone = true
+let flagS = -99       // Rekord-Fahne: hier wäre der Wheelie ein neuer Rekord
+let flagDone = true
 let nextSpawn = 25
 let smokeAcc = 0
 let gasHeld = false
@@ -313,6 +315,35 @@ function engineSound() {
 }
 
 // ------------------------------------------------------------------
+// LED unter dem Bildschirm (NeoPixel)
+// ------------------------------------------------------------------
+let ledKey = -1
+let ledOk = true
+function led(rgb: number) {
+    if (rgb == ledKey || !ledOk) return
+    ledKey = rgb
+    try {
+        const strip = light.onboardStrip()
+        strip.setBrightness(40)
+        strip.setAll(rgb)
+    } catch (e) {
+        ledOk = false       // keine LED vorhanden: dann eben ohne
+    }
+}
+
+function updateLed() {
+    if (state == ST_CRASH) led((Math.floor(t * 6) & 1) ? 0xff0000 : 0)
+    else if (recordT > 0) led(rainbowRgb(Math.floor(t * 12) / 12))
+    else if (state == ST_TITLE) led(0x002030)
+    else if (air) led(0x6000ff)
+    else if (burn) led((Math.floor(t * 15) & 1) ? 0xff6000 : 0xff2000)
+    else if (inWheelie) {
+        const f = Math.floor(Math.min(1, th / CRASH_RAD) * 8)      // grün -> gelb -> rot
+        led((Math.min(255, f * 52) << 16) | (Math.min(255, (8 - f) * 60) << 8))
+    } else led(0)
+}
+
+// ------------------------------------------------------------------
 // Tag und Nacht: Palette überblenden
 // ------------------------------------------------------------------
 // night: 0 = Tag ... 1 = Abendrot ... 2 = Nacht
@@ -374,6 +405,7 @@ function resetRide() {
     crashT = 0; shakeT = 0; hopT = 0; flashT = 0
     markS = -99; markLen = 0
     rampS = -99; blitzS = -99; blitzDone = true
+    flagS = -99; flagDone = true
     nextSpawn = 25
     bannerT = 0; bigText = ""; subText = ""
     while (bumpS.length) bumpS.pop()
@@ -429,6 +461,8 @@ function physics(dt: number, gas: boolean, brake: boolean): boolean {
         if (gas) a += LIFT * c * Math.min(1, v / 2)
         if (brake && th > 0) a -= BRAKE_TORQUE * c
         a += WOBBLE[arms] * Math.sin(t * 6.3)
+        // je länger der Wheelie dauert, desto unruhiger wird er (Windböen)
+        a += Math.min(1.2, wt * 0.02) * Math.sin(t * 2.3 + 3 * Math.sin(t * 0.7))
     }
     om += a * dt
     if (landing && om < -LAND_SPEED) om = -LAND_SPEED
@@ -452,6 +486,7 @@ function addPoints(n: number) {
 
 function endWheelie() {
     inWheelie = false
+    flagS = -99
     if (wd < MIN_WHEELIE) {
         if (bannerT == 0) { bigText = ""; subText = "" }
         return
@@ -484,6 +519,7 @@ function endWheelie() {
 function crash(why: string) {
     state = ST_CRASH
     inWheelie = false; wmode = false; landing = false; air = false; burn = false
+    flagS = -99
     crashT = 0
     shakeT = 0.45
     banner("GESTÜRZT!", why ? why : (wd >= MIN_WHEELIE ? fmt1(wd) + " m ZÄHLT NICHT" : "AUTSCH!"), WHITE, 99)
@@ -569,6 +605,17 @@ function updateWorld(dt: number, sBefore: number) {
         }
     }
     while (coinS.length && coinS[0] < s - 3) { coinS.shift(); coinH.shift() }
+
+    // Rekord-Fahne
+    if (inWheelie && !flagDone && flagS > 0 && s >= flagS) {
+        flagDone = true
+        toast("REKORD GEKNACKT!")
+        sfx(sndBuy)
+        recordT = 1.2
+        for (let i = 0; i < 10; i++)
+            emit(3, REAR_X + Math.randomRange(-10, 40), Math.randomRange(40, 70), Math.randomRange(-30, 30), Math.randomRange(-40, 20), 1)
+        console.log("EV flag")
+    }
 
     // Blitzer
     if (!blitzDone && blitzS <= s) {
@@ -679,6 +726,8 @@ function updatePlay(dt: number) {
         wd = 0; wt = 0; tp = 0
         if (!air) combo = 0
         bannerT = 0
+        flagS = best >= 3 ? s + best : -99      // Rekord-Fahne aufstellen
+        flagDone = false
     }
     if (inWheelie) {
         wd += v * dt
@@ -810,6 +859,7 @@ game.onUpdate(function () {
     if (dirty && (saveT > 15 || state != ST_PLAY)) saveGame()
     engineSound()
     updatePalette()
+    updateLed()
 })
 
 // ------------------------------------------------------------------
@@ -827,15 +877,21 @@ function seg(ax: number, ay: number, bx: number, by: number, w: number, c: numbe
         Math.round(bx - nx), Math.round(by - ny), Math.round(ax - nx), Math.round(ay - ny), c)
 }
 
+// weicher Übergang zwischen den zwei Himmelsfarben (einmal vorgemalt)
+const skyBand = image.create(W, 4)
+skyBand.fillRect(0, 0, W, 2, SKY1)
+skyBand.fillRect(0, 2, W, 2, SKY2)
+for (let x = 0; x < W; x += 2) {
+    skyBand.setPixel(x, 0, SKY2)
+    skyBand.setPixel(x + 1, 1, SKY2)
+    skyBand.setPixel(x + 1, 2, SKY1)
+    skyBand.setPixel(x, 3, SKY1)
+}
+
 function drawSky(n: number) {
     screen.fill(SKY1)
-    screen.fillRect(0, 40, W, HORIZON - 40, SKY2)
-    for (let x = 0; x < W; x += 2) {         // weicher Übergang
-        screen.setPixel(x, 38, SKY2)
-        screen.setPixel(x + 1, 39, SKY2)
-        screen.setPixel(x + 1, 40, SKY1)
-        screen.setPixel(x, 41, SKY1)
-    }
+    screen.fillRect(0, 42, W, HORIZON - 42, SKY2)
+    screen.drawImage(skyBand, 0, 38)
     if (n > 1.3) {                           // Sterne
         for (let i = 0; i < 16; i++) {
             const h = hash(i + 900)
@@ -849,9 +905,9 @@ function drawSky(n: number) {
         if (n < 0.5) screen.drawCircle(128, sunY, 11, WHITE)
     }
     if (n > 1) {
-        const moonY = 16 + (2 - n) * 70
-        screen.fillCircle(34, moonY, 7, WHITE)
-        screen.fillCircle(37, moonY - 2, 6, SKY1)
+        const moonY = 20 + (2 - n) * 70
+        screen.fillCircle(100, moonY, 7, WHITE)
+        screen.fillCircle(103, moonY - 2, 6, SKY1)
     }
     // Wolken
     const drift = Math.floor(s * PPM * 0.06 + t * 3)
@@ -876,9 +932,12 @@ function drawFar(off: number) {
         const top = HORIZON - bh
         screen.fillRect(x, top, bw, bh, FAR)
         if ((h >> 9) % 3 == 0) screen.fillRect(x + 3, top - 3, 2, 3, FAR)          // Antenne
+        let bits = hash(i + 9000)
         for (let wy = top + 3; wy < HORIZON - 4; wy += 5)
-            for (let wx = x + 2; wx < x + bw - 2; wx += 4)
-                if ((hash(i * 31 + wx - x + wy) & 3) == 0) screen.fillRect(wx, wy, 2, 2, GLASS)
+            for (let wx = x + 2; wx < x + bw - 2; wx += 4) {
+                if ((bits & 3) == 0) screen.fillRect(wx, wy, 2, 2, GLASS)
+                bits = (bits >> 2) | ((bits & 3) << 28)
+            }
         i++
         x += SLOT
     }
@@ -985,6 +1044,15 @@ function drawThings(px: number) {
         screen.fillRect(bx - 4, HORIZON - 24, 10, 11, BLACK)
         screen.fillRect(bx - 3, HORIZON - 23, 8, 9, LIGHT)
         screen.fillCircle(bx, HORIZON - 19, 2, flashT > 0 ? WHITE : RED)
+    }
+    // Rekord-Fahne
+    if (flagS > 0) {
+        const fx = REAR_X + Math.round((flagS - s) * PPM)
+        if (fx > -14 && fx < W + 2) {
+            screen.fillRect(fx, HORIZON - 20, 2, 24, WHITE)
+            screen.fillTriangle(fx + 2, HORIZON - 20, fx + 2, HORIZON - 11, fx + 13, HORIZON - 15, flagDone ? YELLOW : RED)
+            screen.fillRect(fx - 2, HORIZON + 3, 6, 2, BLACK)
+        }
     }
     // Münzen (drehen sich)
     const ph = Math.floor(t * 8) % 4

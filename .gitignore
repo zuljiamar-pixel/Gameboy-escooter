@@ -2,3 +2,5 @@ sim-output/
 venv/
 __pycache__/
 *.pyc
+arcade/.build/
+node_modules/

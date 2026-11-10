@@ -2,7 +2,8 @@
     "name": "E-Scooter Wheelie",
     "description": "E-Scooter-Wheelie-Spiel für den Adafruit PyBadge (MakeCode Arcade)",
     "dependencies": {
-        "device": "*"
+        "device": "*",
+        "light": "*"
     },
     "files": [
         "main.ts"
