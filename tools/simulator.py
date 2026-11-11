@@ -169,6 +169,13 @@ class Runner:
         self.frames = []
         self.n = 0
         self.dt = 1 / 30
+        self.px_sum = self.px_max = self.px_n = 0
+
+    def load(self, text):
+        """Wie viele Pixel musste der Bildschirm pro Bild neu malen (seit dem letzten Aufruf)?"""
+        print("      %-34s im Schnitt %5d Pixel pro Bild, höchstens %5d"
+              % (text, self.px_sum / max(1, self.px_n), self.px_max))
+        self.px_sum = self.px_max = self.px_n = 0
 
     def set_keys(self, keys):
         q = self.game.btn.keys.events.q
@@ -185,6 +192,10 @@ class Runner:
             if keys is not None:
                 self.set_keys(keys)
             self.game.step(self.dt)
+            px = self.display.dirty_pixels()[0]
+            self.px_sum += px
+            self.px_max = max(self.px_max, px)
+            self.px_n += 1
             self.n += 1
             if record_every and self.n % record_every == 0:
                 self.frames.append(self.display.snapshot())
@@ -245,6 +256,9 @@ def main():
 
     # --- Menü: Steuerung, Farbwahl, START ---
     r.run(1.0)
+    r.load("Start")
+    r.run(2.0)
+    r.load("Menü")
     r.shot("01_menue.png")
     check(g.state == m.MENU and not g.menu.hidden, "Menü beim Start")
     r.tap(A)
@@ -262,6 +276,7 @@ def main():
     c1 = g.rider.tint[0][0][2]
     r.run(0.5)
     check(g.rider.tint[0][0][2] != c1, "Regenbogen wechselt die Farbe")
+    r.load("Menü mit Regenbogen")
     r.shot("02_regenbogen.png")
     r.tap(RIGHT)
     r.tap(RIGHT)
@@ -282,6 +297,7 @@ def main():
         if kmh() >= 99.5:
             t99 = i / 30
             break
+    r.load("Vollgas bis 100 km/h")
     check(t99 is not None and g.th == 0, "Gas: 50 km/h nach %.1f s, 100 km/h nach %.1f s" % (t50, t99 or -1))
     check(max(tg.hidden for tg in g.lines) is False, "Fahrtwind-Streifen bei hohem Tempo")
     r.shot("04_vollgas.png")
@@ -291,11 +307,13 @@ def main():
     r.run(1.0, keys=[B])
     check(kmh() < v_coast - 20, "B bremst (nach 1 s: %.0f km/h)" % kmh())
     r.run(1.0, keys=[A])
+    r.load("Ausrollen und Bremsen")
 
     # --- Wheelie: OBEN, balancieren, Tricks, sauber landen ---
     r.tap(UP, 0.07)
     r.run(2.0, controller=balance_bot(30))
     check(g.in_wheelie and g.wmode and not g.meter.hidden, "OBEN = Wheelie, mit A/B gehalten (%.0f Grad)" % math.degrees(g.th))
+    r.load("Wheelie")
     r.shot("05_wheelie.png")
     for extra, arms, crouch, word, shot in (([LEFT], 1, False, "EINHÄNDER", "06_einhaender.png"),
                                             ([DOWN], 0, True, "KNIE-TRICK", "07_knie.png"),
@@ -304,7 +322,9 @@ def main():
         r.run(1.3, controller=balance_bot(30, extra))
         check(g.arms == arms and g.crouch == crouch and g.l_sub.text.startswith(word) and g.in_wheelie,
               "Trick: " + g.l_sub.text)
+        check(g.kn == (2.0 if crouch else 0.0), "   Knie %s" % ("ganz unten" if crouch else "gestreckt"))
         r.shot(shot)
+    r.load("Wheelie mit Tricks")
     tp = g.tp
     r.run(2.5, controller=balance_bot(30, land_after=0.0))
     check(not g.in_wheelie and not g.wmode and g.state == m.PLAY, "nochmal OBEN = sauber gelandet")
@@ -317,14 +337,18 @@ def main():
     r.run(1.5, keys=[])
     r.tap(UP, 0.07)
     peak = bounce = 0
+    dipped = False
     for _ in range(90):
         r.run(1 / 30, keys=[], record_every=1)
         peak = max(peak, g.th)
         if g.th == 0:
             bounce = max(bounce, g.b)
+            dipped = dipped or g.dip > 0
     check(15 < math.degrees(peak) < 35 and not g.wmode and g.th == 0,
           "ohne Gas geht das Vorderrad von selbst runter (höchster Punkt %.0f Grad)" % math.degrees(peak))
-    check(bounce > 0.02, "beim Aufsetzen federt es nach (%.1f Grad)" % math.degrees(bounce))
+    check(bounce > 0.03 and dipped and g.b < 0.01,
+          "beim Aufsetzen federt es nach (%.1f Grad) und der Fahrer geht kurz in die Knie"
+          % math.degrees(bounce))
 
     # --- Dauer-Gas im Wheelie = Sturz, START = nochmal ---
     best = g.store.best
@@ -347,6 +371,7 @@ def main():
     r.run(1.6, keys=[A, B])
     check(g.burn and g.burn_t >= 1.0 and not g.mark.hidden, "Burnout mit Rauch und Reifenspur (%.1f s)" % g.burn_t)
     check(any(l > 0 for l in g.puffs.life), "Rauch")
+    r.load("Burnout")
     r.shot("12_burnout.png")
     t = 0
     for i in range(30 * 6):
@@ -358,6 +383,7 @@ def main():
         if kmh() >= 99.5:
             t = i / 30
             break
+    r.load("Boost")
     check(0 < t < 3.0 and not g.boost, "Boost: in %.1f s auf 100 km/h" % t)
     r.shot("14_nach_boost.png")
     r.run(1.0, keys=[])

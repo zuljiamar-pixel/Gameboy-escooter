@@ -39,6 +39,7 @@ BRAKE_TORQUE = 6.0    # wie stark die Bremse es runterdrückt
 DAMPING = 1.8         # Dämpfung (höher = gutmütiger)
 LAND_TORQUE = 5.0     # sanftes Landen mit nochmal OBEN
 LAND_SPEED = 1.6      # so schnell senkt sich das Vorderrad dabei (rad/s)
+BOUNCE = 1.0          # wie stark das Vorderrad beim Aufsetzen nachfedert
 MIN_WHEELIE = 0.5     # so viele Meter muss ein Wheelie mindestens haben
 FPS = 30              # Ziel: Bilder pro Sekunde
 
@@ -58,6 +59,7 @@ NAMES = ("", "EINHÄNDER", "NO-HANDER", "KNIE-TRICK", "KNIE-EINHÄNDER", "KNIE-N
 HELP = ("OBEN = WHEELIE", "LINKS = EINHÄNDER", "UNTEN = KNIE-TRICK", "RECHTS = NO-HANDER",
         "A = GAS  B = BREMSE", "A+B = BURNOUT/BOOST")
 PROP_OFF = (0, 85, 165)       # Laterne, Baum, Laterne (alle 240 Pixel wieder)
+ROAD = 0x3B3B45               # Farbe der Straße (Hintergrund für Schrift unten)
 
 BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_RIGHT, BTN_DOWN, BTN_UP, BTN_LEFT = \
     1, 2, 4, 8, 16, 32, 64, 128
@@ -127,9 +129,9 @@ class Game:
         world.append(L.grid(b"road", 1, False, 0, 98))
         self.dashes = gfx.make_strip(96, 2, 0xEDEDED, 48, 124, 3)      # Mittelstreifen
         world.append(self.dashes)
-        lamp = L.grid(b"lamp", 1, True, 0, 63)
-        self.props = (lamp, L.grid(b"tree", 1, True, 0, 73),
-                      displayio.TileGrid(lamp.bitmap, pixel_shader=lamp.pixel_shader, y=63))
+        lamp = L.grid(b"lamp", 1, True, 0, 62)                         # ziehen am Gehweg vorbei
+        self.props = (lamp, L.grid(b"tree", 1, True, 0, 72),
+                      displayio.TileGrid(lamp.bitmap, pixel_shader=lamp.pixel_shader, y=62))
         for tg in self.props:
             world.append(tg)
         self.mark_bmp = displayio.Bitmap(40, 2, 2)                     # Reifenspur
@@ -159,8 +161,8 @@ class Game:
         self.l_sub = L(font, hud, 20, 0xFFE27A)
         self.l_msg = L(font, hud, 16, 0xFFFFFF)
         self.l_toast = L(font, hud, 16, 0xFFFFFF)
-        self.l_fps = L(font, hud, 7, 0xFFFFFF)
-        self.l_fps.set("-- FPS", 2, 119)
+        self.l_fps = L(font, hud, 8, 0xFFFFFF, 1, 0x101018, ROAD)     # unten links: Bilder pro Sekunde
+        self.l_fps.set(" -- FPS", -3, 119)
 
         # Winkelanzeige: grün = sicher, gelb = Gleichgewicht, rot = Absturzgefahr
         mpal = gfx.make_palette((0, 0x101018, 0x3CCB5A, 0xFFD23F, 0xE84A3C, 0xFFFFFF))
@@ -192,8 +194,9 @@ class Game:
         m.append(tg)
         L(font, m, 9, 0xFFFFFF).set("E-SCOOTER", 80, 1, 1)
         L(font, m, 7, 0xFFD23F, 2, 0x8C3B2E).set("WHEELIE", 80, 10, 1)
-        self.l_col = L(font, m, 14, 0xFFFFFF)
+        self.l_col = L(font, m, 20, 0xFFFFFF)
         self.l_start = L(font, m, 12, 0xFFD23F)
+        self.l_mrec = L(font, m, 16, 0xFFFFFF, 1, 0x101018, ROAD)
 
         root.remove(load.g)
         gc.collect()
@@ -206,7 +209,7 @@ class Game:
         self.fps_t = 0.0
         self.toast_t = 0.0
         self.record_t = 0.0
-        self.sel_t = 0.0
+        self.sel_t = -1.0
         self.kmh = -1
         self.rec_key = -1
         self.rainbow = False
@@ -255,6 +258,7 @@ class Game:
         self.state = MENU
         self.reset_ride()
         self.menu.hidden = False
+        self.sel_t = -1.0
         self.l_speed.hide()
         self.rec_key = -1
         self.show_color()
@@ -265,7 +269,7 @@ class Game:
         if rgb >= 0:
             self.body = rgb
             self.rider.color(rgb)
-        self.l_col.set("< " + name + " >", 80, 28, 1)
+        self.l_col.set("FARBE < " + name + " >", 80, 28, 1)
 
     def start_game(self):
         if self.store.color != self.saved_color:
@@ -276,6 +280,7 @@ class Game:
         self.reset_ride()
         self.kmh = -1
         self.rec_key = -1
+        self.toast("OBEN = WHEELIE")
         self.sound.play(SND_START)
 
     def toast(self, text):
@@ -292,7 +297,7 @@ class Game:
         self.frames += 1
         self.fps_t += dt
         if self.fps_t >= 1.0:           # Bilder pro Sekunde, einmal pro Sekunde neu
-            self.l_fps.set("%d FPS" % int(self.frames / self.fps_t + 0.5), 2, 119)
+            self.l_fps.set(" %d FPS" % int(self.frames / self.fps_t + 0.5), -3, 119)
             self.frames = 0
             self.fps_t = 0.0
         if dt > 0.1:
@@ -308,7 +313,7 @@ class Game:
                 self.state = PAUSE
                 self.l_big.set("PAUSE", 80, 14, 1)
                 self.l_sub.set("START = WEITER", 80, 33, 1)
-                self.l_msg.set("SELECT = MENÜ", 80, 62, 1)
+                self.l_msg.set("SELECT = MENÜ", 80, 46, 1)
                 gc.collect()
             else:
                 self.update_play(dt)
@@ -346,23 +351,26 @@ class Game:
             st.color = (st.color + (1 if p & BTN_RIGHT else n - 1)) % n
             self.show_color()
             self.sound.play(SND_TICK)
-        if b.held & BTN_SELECT:                 # lange halten = Rekorde löschen
-            self.sel_t += dt
-            if self.sel_t >= 3.0 > self.sel_t - dt:
-                st.best = 0.0
-                st.tbest = 0
-                st.save()
-                self.rec_key = -1
-                self.toast("REKORDE GELÖSCHT")
-                self.sound.play(SND_OFF)
-        else:
-            if b.released & BTN_SELECT and self.sel_t < 1.0:      # kurz = Ton an/aus
-                st.sound = not st.sound
-                self.sound.set_on(st.sound)
-                st.save()
-                self.toast("TON AN" if st.sound else "TON AUS")
-                self.sound.play(SND_TICK)
+        if p & BTN_SELECT:
             self.sel_t = 0.0
+        elif self.sel_t >= 0.0:
+            if b.held & BTN_SELECT:             # lange halten = Rekorde löschen
+                self.sel_t += dt
+                if self.sel_t >= 3.0 > self.sel_t - dt:
+                    st.best = 0.0
+                    st.tbest = 0
+                    st.save()
+                    self.rec_key = -1
+                    self.toast("REKORDE GELÖSCHT")
+                    self.sound.play(SND_OFF)
+            else:
+                if self.sel_t < 1.0:            # kurz gedrückt = Ton an/aus
+                    st.sound = not st.sound
+                    self.sound.set_on(st.sound)
+                    st.save()
+                    self.toast("TON AN" if st.sound else "TON AUS")
+                    self.sound.play(SND_TICK)
+                self.sel_t = -1.0
         if int(self.t * 2.5) & 1:
             self.l_start.hide()
         else:
@@ -411,7 +419,7 @@ class Game:
         if th <= 0.0:
             landed = self.th > 0.0
             if landed:
-                self.bv -= om * 0.45            # Aufsetzen: das Vorderrad federt kurz nach
+                self.bv += BOUNCE * (0.6 - 0.5 * om)        # Aufsetzen: das Vorderrad federt nach
                 if om < -2.4:
                     self.v *= 0.94              # harte Landung kostet etwas Tempo
             self.th = 0.0
@@ -490,7 +498,7 @@ class Game:
                                 -25 - random.random() * 35, -12 - random.random() * 18,
                                 0.7 + random.random() * 0.5, 0)
         elif self.boost:                        # Flammen hinten raus
-            self.emit += dt * 30
+            self.emit += dt * 20
             if self.emit >= 1:
                 self.emit -= 1
                 self.puffs.emit(REAR_X - 8, AXLE_Y - 2 + random.randint(-2, 2),
@@ -512,12 +520,12 @@ class Game:
             if v >= VMAX - 0.5:
                 self.toast("%d KM/H!" % MAX_KMH)
 
-        # Wippen: beim Beschleunigen geht die Nase leicht hoch, beim Landen federt sie nach
-        sq = (v - v0) / dt * 0.011
+        # Wippen: im Boost wird das Vorderrad leicht, beim Landen federt es nach
+        sq = ((v - v0) / dt - 7.0) * 0.03 if self.th == 0 else 0.0
         if sq < 0.0:
             sq = 0.0
-        elif sq > 0.16:
-            sq = 0.16
+        elif sq > 0.21:
+            sq = 0.21
         self.bv += ((sq - self.b) * 90.0 - self.bv * 12.0) * dt
         self.b += self.bv * dt
         if self.b < 0.0:
@@ -576,7 +584,7 @@ class Game:
             if tp > st.tbest:
                 st.tbest = tp
                 new = True
-                self.l_msg.set("TRICK-REKORD!", 80, 62, 1)
+                self.l_msg.set("TRICK-REKORD!", 80, 46, 1)
         if self.wd > st.best:
             st.best = self.wd
             new = True
@@ -626,7 +634,7 @@ class Game:
             if int(self.t * 2.5) & 1:
                 self.l_msg.hide()
             else:
-                self.l_msg.set("START = NOCHMAL", 80, 62, 1)
+                self.l_msg.set("START = NOCHMAL", 80, 46, 1)
             if self.btn.pressed & (BTN_START | BTN_A):
                 self.state = PLAY
                 self.reset_ride()
@@ -677,7 +685,7 @@ class Game:
             self.shake_t -= dt
             x += random.randint(-2, 2)
             y += random.randint(-1, 1)
-        elif st == PLAY and (self.burn or self.boost):
+        elif self.burn and st == PLAY:          # Burnout: der Scooter zittert
             x += int(t * 30) & 1
         rd.g.x = x
         rd.g.y = y
@@ -711,10 +719,11 @@ class Game:
             k = int(t / 3) & 1 if store.tbest else 0
             if k != self.rec_key:
                 self.rec_key = k
+                self.l_rec.hide()
                 if k:
-                    self.l_rec.set("TRICK-REKORD %d" % store.tbest, 158, 119, 2)
+                    self.l_mrec.set("TRICK-REKORD %d" % store.tbest, 158, 119, 2)
                 else:
-                    self.l_rec.set("REKORD %.1f M" % store.best, 158, 119, 2)
+                    self.l_mrec.set("REKORD %.1f M" % store.best, 158, 119, 2)
         else:
             if self.rec_key != 9:
                 self.rec_key = 9

@@ -9,6 +9,7 @@
 # (Gezeichnet werden die Bilder auf dem Computer mit tools/bilder.py.)
 
 import binascii
+import gc
 import random
 import struct
 
@@ -59,6 +60,7 @@ class Bilder:
         w = int(p[2])
         h = int(p[3])
         n = len(p) - 4
+        gc.collect()                        # aufräumen, damit das Bild sicher Platz findet
         bmp = displayio.Bitmap(w, h, n)
         pal = displayio.Palette(n)
         for i in range(n):
@@ -131,11 +133,12 @@ def rainbow(h):
 class Label:
     # ein Text aus Kacheln der Pixel-Schrift
 
-    def __init__(self, font, parent, n, color, scale=1, shadow=0x101018):
+    def __init__(self, font, parent, n, color, scale=1, shadow=0x101018, bg=None):
+        # bg = Farbe hinter der Schrift (None = durchsichtig)
         self.n = n
         self.scale = scale
         self.g = displayio.Group(scale=scale)
-        self.pal = make_palette((0, color, shadow))
+        self.pal = make_palette((bg or 0, color, shadow), bg is None)
         self.tg = displayio.TileGrid(font, pixel_shader=self.pal, width=n, height=1,
                                      tile_width=6, tile_height=8)
         self.g.append(self.tg)
