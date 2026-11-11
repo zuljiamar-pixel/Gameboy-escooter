@@ -95,7 +95,7 @@ beim Start erst übersetzen. Deshalb:
   `grafik.py`. Kommentare kosten beim Übersetzen keinen Speicher; `grafik.py`
   liest beim Start einfach seine eigenen letzten Zeilen (lauflängen-codiert)
   und füllt damit die Bitmaps. Das spart den ganzen Zeichen-Code auf dem Gerät
-  und das Spiel startet in ein bis zwei Sekunden.
+  und das Spiel startet in wenigen Sekunden.
 * **Der Hintergrund steht still**, nur kleine Bildchen bewegen sich. Pro Bild
   müssen so nur etwa 2000 von 20480 Pixeln neu gemalt werden.
 * **Während der Fahrt wird kein Speicher angefordert** (feste Listen, Texte

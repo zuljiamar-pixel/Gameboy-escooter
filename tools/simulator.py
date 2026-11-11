@@ -13,6 +13,7 @@ Erzeugt Screenshots (PNG) und eine Animation (GIF) im Ausgabe-Ordner.
 import importlib.util
 import math
 import os
+import random
 import struct
 import sys
 import types
@@ -237,6 +238,7 @@ def check(cond, text):
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "sim-output")
     os.makedirs(out, exist_ok=True)
+    random.seed(1)                    # immer der gleiche "Zufall": gleiche Bilder bei jedem Lauf
     r = Runner(out)
     g = r.game
     m = r.mod
@@ -254,6 +256,8 @@ def main():
     r.load("Start")
     r.run(2.0)
     r.load("Menü")
+    while g.l_start.g.hidden:         # "START = LOS!" blinkt: fürs Bild warten, bis es da ist
+        r.run(1 / 30)
     r.shot("01_menue.png")
     check(g.state == m.MENU and not g.menu.hidden, "Menü beim Start")
     r.tap(A)
@@ -435,6 +439,7 @@ def make_docs(out, docs):
                      ("11_sturz.png", "sturz.png"), ("10_ergebnis.png", "rekord.png")):
         Image.open(os.path.join(out, src)).resize((320, 256), Image.NEAREST).save(
             os.path.join(docs, dst), optimize=True)
+    random.seed(2)
     r = Runner(docs)                  # eine kurze Runde für die Animation
     r.run(1.0)
     r.tap(RIGHT)

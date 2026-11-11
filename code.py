@@ -135,6 +135,7 @@ class Game:
         self.props = (lamp, L.grid("tree", 1, True, 0, 72),
                       displayio.TileGrid(lamp.bitmap, pixel_shader=lamp.pixel_shader, y=62))
         for tg in self.props:
+            tg.hidden = True
             world.append(tg)
         self.mark_bmp = displayio.Bitmap(40, 2, 2)                     # Reifenspur
         self.mark = displayio.TileGrid(self.mark_bmp, y=116,
@@ -144,6 +145,8 @@ class Game:
         world.append(self.shadow)
         self.rider = rd = gfx.Rider(L)                                 # Scooter und Fahrer
         self.nf = gfx.NF - 1
+        rd.g.x = REAR_X + 72
+        rd.g.y = AXLE_Y
         world.append(rd.g)
         self.puffs = gfx.Puffs(world, *L.get("puff"))
         L.close()
@@ -155,6 +158,7 @@ class Game:
             self.lines.append(tg)
 
         hud = displayio.Group()
+        hud.hidden = True               # erst zeigen, wenn alles fertig ist
         root.append(hud)
         L = gfx.Label
         self.l_rec = L(font, hud, 16, 0xFFFFFF)
@@ -201,6 +205,7 @@ class Game:
         self.l_mrec = L(font, m, 16, 0xFFFFFF, 1, 0x101018, ROAD)
 
         root.remove(load.g)
+        hud.hidden = False
         gc.collect()
         self.t = 0.0
         self.sx = 0.0           # Straße: wie weit der Mittelstreifen verschoben ist
