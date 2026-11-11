@@ -209,11 +209,6 @@ class Runner:
         img.resize((480, 384), Image.NEAREST).save(os.path.join(self.out, name))
         return img
 
-    def save_gif(self, name):
-        big = [f.resize((320, 256), Image.NEAREST).quantize(colors=48) for f in self.frames]
-        big[0].save(os.path.join(self.out, name), save_all=True, append_images=big[1:],
-                    duration=100, loop=0, optimize=True)
-
 
 def balance_bot(target_deg, extra=(), land_after=None):
     """Hält den Wheelie bei ca. target_deg (A antippen, B wenn zu hoch)."""
@@ -426,8 +421,41 @@ def main():
     s3.save()
     check(struct.unpack("<I", bytes(nvm[12:16]))[0] == 4711, "alte Punkte werden nicht überschrieben")
 
-    r.save_gif("wheelie.gif")
     print("\nAlle Checks OK - Bilder in", os.path.abspath(out))
+    if len(sys.argv) > 2:             # zweites Argument: Ordner für die Bilder der Anleitung
+        make_docs(out, sys.argv[2])
+
+
+def make_docs(out, docs):
+    """Bilder und eine kurze Animation für die README."""
+    os.makedirs(docs, exist_ok=True)
+    for src, dst in (("01_menue.png", "menue.png"), ("05_wheelie.png", "wheelie.png"),
+                     ("08_nohander.png", "nohander.png"), ("07_knie.png", "knie.png"),
+                     ("12_burnout.png", "burnout.png"), ("13_boost.png", "boost.png"),
+                     ("11_sturz.png", "sturz.png"), ("10_ergebnis.png", "rekord.png")):
+        Image.open(os.path.join(out, src)).resize((320, 256), Image.NEAREST).save(
+            os.path.join(docs, dst), optimize=True)
+    r = Runner(docs)                  # eine kurze Runde für die Animation
+    r.run(1.0)
+    r.tap(RIGHT)
+    r.run(0.5)
+    r.tap(RIGHT)
+    r.run(0.6)
+    r.tap(START)
+    r.run(1.2, keys=[A, B])           # Burnout ...
+    r.run(1.9, keys=[A])              # ... und Boost
+    r.run(0.4, keys=[])
+    r.tap(UP, 0.07)
+    r.run(1.6, controller=balance_bot(30))
+    r.run(1.2, controller=balance_bot(30, [LEFT]))
+    r.run(1.2, controller=balance_bot(30, [RIGHT]))
+    r.run(1.2, controller=balance_bot(30, [DOWN]))
+    r.run(2.6, controller=balance_bot(30, land_after=0.0))
+    r.frames = r.frames[::2]          # 5 Bilder pro Sekunde reichen für die Vorschau
+    big = [f.resize((320, 256), Image.NEAREST).quantize(colors=64) for f in r.frames]
+    big[0].save(os.path.join(docs, "spiel.gif"), save_all=True, append_images=big[1:],
+                duration=200, loop=0, optimize=True)
+    print("Bilder für die Anleitung in", os.path.abspath(docs))
 
 
 if __name__ == "__main__":

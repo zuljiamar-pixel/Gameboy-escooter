@@ -18,6 +18,7 @@ import displayio
 import keypad
 from bitmaptools import fill_region
 
+VERSION = 5                   # code.py prüft, ob beide Dateien zusammenpassen
 W, H = 160, 128
 REAR_X, AXLE_Y = 48, 112      # Hinterachse auf dem Bildschirm
 STEP = 3                      # ein Scooter-Bild alle 3 Grad
@@ -48,7 +49,7 @@ class Bilder:
             line = f.readline()
 
     def _head(self, name, least):
-        p = self.f.readline().split()
+        p = str(self.f.readline(), "utf-8").split()
         if len(p) < least or p[1] != name:
             raise RuntimeError("grafik.py ist kaputt - bitte neu kopieren")
         return p
@@ -175,19 +176,19 @@ class Rider:
     def __init__(self, L):
         self.g = g = displayio.Group()      # Nullpunkt = Hinterachse
         self.key = -99
-        self.sc = L.grid(b"sc", NF)
-        self.legs = L.grid(b"legs", NL)
-        self.torso = L.grid(b"torso", NT)
-        self.bar = L.grid(b"bar", NP * NF)
-        self.up = L.grid(b"up", 2 * NU)
+        self.sc = L.grid("sc", NF)
+        self.legs = L.grid("legs", NL)
+        self.torso = L.grid("torso", NT)
+        self.bar = L.grid("bar", NP * NF)
+        self.up = L.grid("up", 2 * NU)
         for tg in (self.sc, self.legs, self.torso, self.bar, self.up):
             g.append(tg)
-        self.tab = t = L.data(b"tab")
+        self.tab = t = L.data("tab")
         # diese Paletten-Plätze bekommen die gewählte Farbe: Scooter und Helm
         self.tint = [(self.sc.pixel_shader, 2), (self.torso.pixel_shader, 5)]
         self.cr = []                        # drei Bilder für den Sturz
         k = NP * NF * 13
-        for name in (b"cr0", b"cr1", b"cr2"):
+        for name in ("cr0", "cr1", "cr2"):
             tg = L.grid(name, 1, True, t[k] - 128, t[k + 1] - 128)
             k += 2
             tg.hidden = True

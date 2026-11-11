@@ -51,8 +51,8 @@ PX_PER_M = 26                 # 26 Pixel = 1 Meter (Radstand)
 VMAX = MAX_KMH / 3.6
 PHI0 = math.radians(90 - BALANCE_DEG)
 CRASH_RAD = math.radians(CRASH_DEG)
-CTRL = (1.0, 0.75, 0.45)      # Kontrolle mit 2 / 1 / 0 Händen am Lenker
-WOBBLE = (0.0, 0.6, 1.5)      # so stark wackelt es dabei
+CTRL = (1.0, 0.7, 0.4)        # so gut drückt die Bremse das Vorderrad mit 2 / 1 / 0 Händen runter
+WOBBLE = (0.0, 0.7, 1.6)      # so stark schwankt es dabei
 # Tricks: Nummer = Arme (0-2) + 3 für Knie
 RATE = (0, 1, 3, 1, 4, 8)     # Trick-Punkte pro Meter
 NAMES = ("", "EINHÄNDER", "NO-HANDER", "KNIE-TRICK", "KNIE-EINHÄNDER", "KNIE-NO-HANDER")
@@ -79,6 +79,8 @@ SND_OFF = ((300, 0.1), (200, 0.15))
 # Die Grafik steckt in grafik.py (so muss der PyBadge nie alles auf einmal laden)
 try:
     import grafik as gfx
+    if getattr(gfx, "VERSION", 0) != 5:
+        raise ImportError("grafik.py ist von einer anderen Version")
     REAR_X, AXLE_Y, STEP = gfx.REAR_X, gfx.AXLE_Y, gfx.STEP
     LOAD_ERROR = None
 except Exception as e:  # pylint: disable=broad-except
@@ -100,11 +102,11 @@ def show_error(e):
         pass
     gc.collect()
     print()
-    if isinstance(e, ImportError):
-        print("Fehlt grafik.py auf CIRCUITPY?")
     print("FEHLER:", repr(e))
     print("Speicher frei:", getattr(gc, "mem_free", lambda: "?")())
-    print("Bitte Foto an Claude schicken")
+    print("Tipp: code.py UND grafik.py")
+    print("neu kopieren. Sonst Foto")
+    print("an Claude schicken.")
     while True:
         time.sleep(1)
 
@@ -116,7 +118,7 @@ class Game:
         self.leds = gfx.Pixels()
         self.sound = gfx.Sound(self.store.sound)
         L = gfx.Bilder()                # die Bilder stehen fertig gezeichnet in grafik.py
-        font = L.get(b"font")[0]
+        font = L.get("font")[0]
         root = displayio.Group()
         self.world = world = displayio.Group()
         root.append(world)
@@ -124,13 +126,13 @@ class Game:
         load.set("LÄDT...", 80, 60, 1)
         display.root_group = root
 
-        world.append(L.grid(b"sky", 1, False))                         # Himmel, Stadt, Straße
-        world.append(L.grid(b"town", 1, False, 0, 53))
-        world.append(L.grid(b"road", 1, False, 0, 98))
+        world.append(L.grid("sky", 1, False))                         # Himmel, Stadt, Straße
+        world.append(L.grid("town", 1, False, 0, 53))
+        world.append(L.grid("road", 1, False, 0, 98))
         self.dashes = gfx.make_strip(96, 2, 0xEDEDED, 48, 124, 3)      # Mittelstreifen
         world.append(self.dashes)
-        lamp = L.grid(b"lamp", 1, True, 0, 62)                         # ziehen am Gehweg vorbei
-        self.props = (lamp, L.grid(b"tree", 1, True, 0, 72),
+        lamp = L.grid("lamp", 1, True, 0, 62)                         # ziehen am Gehweg vorbei
+        self.props = (lamp, L.grid("tree", 1, True, 0, 72),
                       displayio.TileGrid(lamp.bitmap, pixel_shader=lamp.pixel_shader, y=62))
         for tg in self.props:
             world.append(tg)
@@ -143,7 +145,7 @@ class Game:
         self.rider = rd = gfx.Rider(L)                                 # Scooter und Fahrer
         self.nf = gfx.NF - 1
         world.append(rd.g)
-        self.puffs = gfx.Puffs(world, *L.get(b"puff"))
+        self.puffs = gfx.Puffs(world, *L.get("puff"))
         L.close()
         self.lines = []                                                # Fahrtwind-Streifen
         for _ in range(4):
@@ -161,7 +163,7 @@ class Game:
         self.l_sub = L(font, hud, 20, 0xFFE27A)
         self.l_msg = L(font, hud, 16, 0xFFFFFF)
         self.l_toast = L(font, hud, 16, 0xFFFFFF)
-        self.l_fps = L(font, hud, 8, 0xFFFFFF, 1, 0x101018, ROAD)     # unten links: Bilder pro Sekunde
+        self.l_fps = L(font, hud, 9, 0xFFFFFF, 1, 0x101018, ROAD)     # unten links: Bilder pro Sekunde
         self.l_fps.set(" -- FPS", -3, 119)
 
         # Winkelanzeige: grün = sicher, gelb = Gleichgewicht, rot = Absturzgefahr
@@ -280,7 +282,7 @@ class Game:
         self.reset_ride()
         self.kmh = -1
         self.rec_key = -1
-        self.toast("OBEN = WHEELIE")
+        self.toast("OBEN=WHEELIE")
         self.sound.play(SND_START)
 
     def toast(self, text):
@@ -405,13 +407,12 @@ class Game:
         if self.landing:
             a -= LAND_TORQUE
         elif self.wmode:
-            c = CTRL[self.arms]
             f = v / VMAX
             if gas:
-                a += LIFT * c * min(1.0, v * 0.5) * (1.0 - 0.3 * f * f)
+                a += LIFT * min(1.0, v * 0.5) * (1.0 - 0.3 * f * f)
             if brake:
-                a -= BRAKE_TORQUE * c
-            a += WOBBLE[self.arms] * math.sin(self.t * 6.3)
+                a -= BRAKE_TORQUE * CTRL[self.arms]
+            a += WOBBLE[self.arms] * math.sin(self.t * 3.1)
         om += a * h
         if self.landing and om < -LAND_SPEED:
             om = -LAND_SPEED

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Baut das Spiel aus main.ts.
 #
-#   ./build.sh          -> ../wheelie.uf2 (für den PyBadge / PyBadge LC)
+#   ./build.sh          -> wheelie.uf2 (für den PyBadge / PyBadge LC)
 #   ./build.sh test     -> Simulator-Version mit Test-Haken (für tools/run_tests.js)
 #
 # Braucht Node.js und Internet (lädt die MakeCode-Werkzeuge und die fertig
@@ -29,6 +29,6 @@ if [ "$1" = "test" ]; then
 else
     [ -d pxt_modules/hw---samd51 ] || npx pxt install --hw samd51
     npx pxt build --hw samd51 > build.log 2>&1 || { grep -n "error" build.log; exit 1; }
-    cp built/binary.uf2 "$SRC/../wheelie.uf2"
+    cp built/binary.uf2 "$SRC/wheelie.uf2"
     echo "Fertig: wheelie.uf2 ($(wc -c < built/binary.uf2) Bytes)"
 fi

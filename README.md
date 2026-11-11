@@ -1,106 +1,121 @@
 # E-Scooter Wheelie 🛴
 
-Ein Wheelie-Spiel für den **Adafruit PyBadge** und **PyBadge LC**.
-
-Die aktuelle Version ist ein **MakeCode-Arcade-Spiel**: Sie wird in echte
-Maschinensprache übersetzt und läuft deshalb viel flüssiger als die erste
-Version in CircuitPython (die liegt noch im Ordner [`circuitpython/`](circuitpython/)).
+Ein Wheelie-Spiel für den **Adafruit PyBadge** und **PyBadge LC**, komplett
+selbst geschrieben in **CircuitPython**. Es besteht aus genau zwei Dateien:
+[`code.py`](code.py) (das Spiel) und [`grafik.py`](grafik.py) (Bilder, Knöpfe, Ton).
 
 ![Spiel-Animation](docs/spiel.gif)
 
-| Start | Wheelie | Trick-Combo | Sprung |
+| Menü | Wheelie | No-Hander | Knie-Trick |
 |---|---|---|---|
-| ![Titel](docs/titel.png) | ![Wheelie](docs/wheelie.png) | ![Trick](docs/trick.png) | ![Sprung](docs/sprung.png) |
+| ![Menü](docs/menue.png) | ![Wheelie](docs/wheelie.png) | ![No-Hander](docs/nohander.png) | ![Knie-Trick](docs/knie.png) |
 
-| Burnout | Abendrot | Nacht | Farben-Shop |
+| Burnout | Boost | Rekord | Sturz |
 |---|---|---|---|
-| ![Burnout](docs/burnout.png) | ![Abend](docs/abend.png) | ![Nacht](docs/nacht.png) | ![Shop](docs/shop.png) |
+| ![Burnout](docs/burnout.png) | ![Boost](docs/boost.png) | ![Rekord](docs/rekord.png) | ![Sturz](docs/sturz.png) |
 
-*(Bilder aus dem MakeCode-Simulator.)*
+*(Bilder aus dem Simulator `tools/simulator.py`.)*
 
 ## Installation (geht auch nur mit dem Handy)
 
 Du brauchst den PyBadge und ein **USB-Kabel, das Daten überträgt**.
 
-1. Lade die Datei [`wheelie.uf2`](wheelie.uf2) herunter
-   (auf GitHub: Datei öffnen → „Download raw file“).
-2. Steck den PyBadge an (Computer oder Handy mit USB-Adapter) und schalte ihn
-   auf **ON**.
-3. Drück auf der **Rückseite zweimal schnell** den **Reset-Knopf**. Die LED
-   leuchtet grün und es erscheint ein Laufwerk **BADGELCBOOT**
-   (beim großen PyBadge: **PYBADGEBOOT**).
-4. Kopiere `wheelie.uf2` auf dieses Laufwerk. Der PyBadge startet neu und das
-   Spiel läuft. Ab jetzt startet es bei jedem Einschalten von selbst.
+1. **CircuitPython muss auf dem PyBadge sein** (nur beim ersten Mal, oder wenn
+   vorher ein anderes Spiel als `.uf2` draufgespielt wurde):
+   * Lade von <https://circuitpython.org/board/pybadge/> die `.uf2`-Datei herunter.
+   * PyBadge anstecken, auf **ON** schalten und auf der Rückseite **zweimal
+     schnell** den **Reset-Knopf** drücken. Es erscheint ein Laufwerk
+     **BADGELCBOOT** (beim großen PyBadge: **PYBADGEBOOT**).
+   * Die `.uf2`-Datei dorthin kopieren. Danach heißt das Laufwerk **CIRCUITPY**.
+2. Kopiere **`code.py`** und **`grafik.py`** auf das Laufwerk **CIRCUITPY**
+   (auf dem Samsung-Handy: *Eigene Dateien* → *USB-Speicher 1*).
+   Alte Dateien mit dem gleichen Namen ersetzen.
+3. Fertig, das Spiel startet von selbst. Ab jetzt bei jedem Einschalten.
 
-Das war's, es ist nur diese **eine Datei**. Rekorde, Punkte und gekaufte
-Farben werden im PyBadge gespeichert.
+Wichtig: Die Dateien müssen **genau** `code.py` und `grafik.py` heißen
+(nicht `code (1).py`), und es müssen immer **beide** von der gleichen Version sein.
 
 ## Steuerung
 
 | Knopf | Funktion |
 |---|---|
-| **OBEN** | Wheelie-Mode an: das Vorderrad geht hoch |
-| **OBEN** nochmal | sauber landen: der Wheelie wird gezählt |
+| **START** | Spiel starten, im Spiel: Pause |
 | **A** | Gas (bis 100 km/h), im Wheelie: Vorderrad höher |
 | **B** | Bremse, im Wheelie: Vorderrad runter |
-| **A + B** halten | Burnout! Danach nur B loslassen = Turbo-Start |
+| **OBEN** | Wheelie: das Vorderrad geht hoch |
+| **OBEN** nochmal | sauber landen, dann zählt der Wheelie |
 | **LINKS** halten | Trick: Einhänder |
+| **UNTEN** halten | Trick: in die Knie |
 | **RECHTS** halten | Trick: No-Hander |
-| **RUNTER** halten | Trick: in die Knie |
-| **MENU** (START) | Pause-Menü: Lautstärke, Helligkeit, FPS-Anzeige, Rekorde löschen |
-| **LINKS / RECHTS** im Startbildschirm | Scooter-Farbe aussuchen |
-| **B** im Startbildschirm | Farbe mit Punkten kaufen |
+| **A + B** im Stand | Burnout. Nach 1 Sekunde **B loslassen** und A halten = **Boost** |
+| **LINKS / RECHTS** im Menü | Scooter-Farbe wählen (12 Farben, auch Regenbogen) |
+| **SELECT** im Menü | Ton an/aus (3 Sekunden halten: Rekorde löschen) |
+| **SELECT** in der Pause | zurück ins Menü |
 
 ## So geht das Spiel
 
-* Der Scooter rollt von allein mit 25 km/h. Mit **A** gibst du Gas.
-* Drück **OBEN** für den **Wheelie-Mode** und halte dann mit **A** (höher)
-  und **B** (tiefer) die Balance. Die Anzeige oben hilft: grün = sicher,
-  gelb = Balance, rot = gleich kippst du um.
-* Mit nochmal **OBEN** landest du sauber, dann zählt die Strecke. Kippst du
-  nach hinten um, zählt der Wheelie nicht.
-* **Rekord-Fahne:** Im Wheelie steht am Straßenrand eine rote Fahne. Schaffst
-  du es bis dorthin, ist es ein neuer Rekord.
-* **Tricks** (LINKS, RECHTS, RUNTER, auch kombiniert) geben Trick-Punkte.
-  Zeigst du im gleichen Wheelie mehrere verschiedene Tricks, gibt es eine
-  **Combo** (x2, x3 …) und die Punkte zählen mehrfach.
-* **Rampen:** Drüberfahren = Sprung. In der Luft gibt es Sprung-Punkte, mit
-  Tricks mehr. Aber: Wer mit No-Hander landet, stürzt.
-* **Münzen** geben je 10 Punkte. Manche hängen so hoch, dass du sie nur im
-  Wheelie oder im Sprung erwischst.
-* **Blitzer:** Fährst du mit mehr als 60 km/h vorbei, wirst du geblitzt und
-  bekommst so viele Punkte, wie du km/h draufhattest.
-* **Gullydeckel** schütteln dich im Wheelie durch.
-* **Tag und Nacht:** Die Sonne geht unter, die Fenster und Laternen gehen an.
-* **Farben-Shop:** Alle Punkte landen auf deinem Konto. Im Startbildschirm
-  kaufst du damit neue Scooter-Farben:
-
-  | Mint | Blau | Pink | Neon | Feuer-Rot | Schwarz | Gold | Regenbogen |
-  |---|---|---|---|---|---|---|---|
-  | gratis | 100 | 250 | 500 | 750 | 1000 | 2000 | 5000 |
-
+* Im **Menü** steht die Steuerung. Mit LINKS/RECHTS suchst du die Farbe aus
+  (der Helm bekommt die gleiche Farbe), mit **START** geht es los.
+* **A** gibt Gas. Der Scooter schafft **100 km/h**.
+* **OBEN** reißt das Vorderrad hoch. Jetzt musst du selber balancieren:
+  **A** = höher, **B** = tiefer. Die Anzeige oben hilft: grün = sicher,
+  gelb = Gleichgewicht, rot = gleich kippst du um.
+* Mit nochmal **OBEN** landest du sauber. Nur dann zählt die Strecke für den
+  **Rekord**. Kippst du nach hinten um, zählt der Wheelie nicht.
+* **Tricks** (LINKS, UNTEN, RECHTS, auch zusammen) geben Trick-Punkte pro Meter.
+  Beim No-Hander wirkt die Bremse nur schwach und der Scooter schwankt, das ist
+  also riskant. In der Hocke fährt es sich ruhiger.
+* **Burnout:** Im Stand A + B halten. Nach 1 Sekunde blinkt „B LOS = BOOST!“.
+  Dann nur B loslassen: Der Scooter schießt in 2 Sekunden auf 100 km/h.
+* Unten links steht, wie viele **Bilder pro Sekunde (FPS)** das Spiel schafft.
+* Rekorde, Farbe und Ton bleiben gespeichert, auch nach dem Ausschalten.
 * Die **LED** unter dem Display zeigt im Wheelie grün → gelb → rot.
 
-## Zurück zur alten CircuitPython-Version
+## Einstellungen
 
-Die alte Version liegt in [`circuitpython/`](circuitpython/README.md).
-Dafür wieder CircuitPython installieren und `code.py` + `grafik.py`
-kopieren. Die Rekorde der beiden Versionen sind getrennt.
+Ganz oben in `code.py` steht ein Block **EINSTELLUNGEN**. Dort kannst du zum
+Beispiel die Höchstgeschwindigkeit (`MAX_KMH`), die Kraft vom Boost
+(`BOOST_ACCEL`) oder die Schwierigkeit (`GRAVITY`, `LIFT`, `DAMPING`) ändern.
+
+## Wenn etwas nicht klappt
+
+* Steht **FEHLER** auf dem Bildschirm: Kopiere `code.py` **und** `grafik.py`
+  nochmal neu aufs Laufwerk. Hilft das nicht, mach ein Foto vom Bildschirm.
+* Erscheint kein Laufwerk **CIRCUITPY** mehr, ist CircuitPython nicht (mehr)
+  drauf: siehe Schritt 1 der Installation.
 
 ## Für Entwickler
 
-Der Quelltext ist [`arcade/main.ts`](arcade/main.ts) (MakeCode Arcade,
-Static TypeScript). Oben in der Datei steht ein Block **EINSTELLUNGEN**
-für Tempo, Schwierigkeit usw.
+Der PyBadge hat nur 192 KB Arbeitsspeicher, und CircuitPython muss jede Datei
+beim Start erst übersetzen. Deshalb:
+
+* **Alle Bilder sind vorgezeichnet.** `tools/bilder.py` zeichnet auf dem
+  Computer den Scooter und den Fahrer in jedem Winkel, die Stadt, die Schrift
+  usw. und hängt das Ergebnis als **Kommentar-Zeilen** ans Ende von
+  `grafik.py`. Kommentare kosten beim Übersetzen keinen Speicher; `grafik.py`
+  liest beim Start einfach seine eigenen letzten Zeilen (lauflängen-codiert)
+  und füllt damit die Bitmaps. Das spart den ganzen Zeichen-Code auf dem Gerät
+  und das Spiel startet in ein bis zwei Sekunden.
+* **Der Hintergrund steht still**, nur kleine Bildchen bewegen sich. Pro Bild
+  müssen so nur etwa 2000 von 20480 Pixeln neu gemalt werden.
+* **Während der Fahrt wird kein Speicher angefordert** (feste Listen, Texte
+  nur bei Änderung), damit die Speicherbereinigung nicht dazwischenfunkt.
 
 ```sh
-cd arcade
-./build.sh                 # baut ../wheelie.uf2 (braucht Node.js + Internet)
-./build.sh test            # Simulator-Version mit Test-Haken
-node tools/run_tests.js    # spielt das Spiel im Simulator durch (Playwright)
+python -m venv venv
+venv/bin/pip install adafruit-blinka-displayio pillow
+venv/bin/python tools/bilder.py            # Bilder neu zeichnen -> grafik.py
+venv/bin/python tools/simulator.py out     # Spiel am Computer durchspielen und prüfen
+venv/bin/python tools/simulator.py out docs   # ... und die Bilder für diese Seite erneuern
 ```
 
-`tools/run_tests.js` steuert die Knöpfe im echten MakeCode-Simulator und
-prüft Wheelie, Tricks, Münzen, Rampen, Blitzer, Burnout, Shop und das Menü.
-Man kann `main.ts` auch auf <https://arcade.makecode.com> in den
-JavaScript-Editor einfügen (die Farbpalette steht in `arcade/pxt.json`).
+`tools/simulator.py` lässt das echte `code.py` mit nachgebauten Knöpfen und
+Bildschirm laufen, spielt alles durch (Menü, Farben, Wheelie, Tricks, Landen,
+Sturz, Burnout, Boost, Pause, Speichern) und zählt, wie viele Pixel pro Bild
+neu gemalt werden müssen.
+
+## MakeCode-Arcade-Version
+
+Im Ordner [`arcade/`](arcade/README.md) liegt eine frühere, andere Version des
+Spiels als MakeCode-Arcade-Programm (`wheelie.uf2`). Sie wird nicht mehr
+weiterentwickelt.

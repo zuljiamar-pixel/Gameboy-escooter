@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 arcade/.build/
 node_modules/
+tools/vorschau.png
