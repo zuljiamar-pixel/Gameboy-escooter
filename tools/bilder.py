@@ -14,7 +14,7 @@ Format einer Bild-Gruppe:
     #@ name breite höhe farbe0 farbe1 ...     (Farben als rrggbb)
     #<eine Zeile pro Bildzeile, hex>          jedes Byte = (Länge-1) << bits | Farbe
 bits = 2 bei höchstens 4 Farben, sonst 4. Farbe 0 am Zeilenende wird weggelassen.
-Dazu kommt die Tabelle "#= tab <hex>": für jedes Bild 13 Bytes, wo welches
+Dazu kommt die Tabelle "#= tab <hex>": für jedes Bild 17 Bytes, wo welches
 Körperteil hingehört (siehe Rider.show in grafik.py).
 """
 
@@ -248,18 +248,36 @@ def body(th, pose):
     return S, R, hip, psi
 
 
-def draw_legs(r, S, R, hip):
+def draw_leg(r, S, R, hip, front):
+    # ein Bein, das auf dem Trittbrett steht (hinteres Bein dunkler)
     o = R(0, 0)
     f = R(1, 0)
-    fwd = (f[0] - o[0], f[1] - o[1])                        # "vorn" für den Fahrer
-    for ax, c in ((5.5, 1), (14.5, 2)):                     # hinteres Bein dunkler
-        ankle = S(ax, 2.3)
-        knee = joint(ankle, hip, LEG, LEG, fwd)
-        r.seg(ankle, knee, 3.2, c)
-        r.circle(knee, 1.7, c)
-        r.seg(knee, hip, 3.8, c)
-        r.seg(S(ax - 2.2, 1.6), S(ax + 2.6, 1.6), 2.4, 3)   # Schuh
-    r.circle(hip, 2.2, 2)
+    ax, c = (14.5, 2) if front else (5.5, 1)
+    ankle = S(ax, 2.3)
+    knee = joint(ankle, hip, LEG, LEG, (f[0] - o[0], f[1] - o[1]))
+    r.seg(ankle, knee, 3.2, c)
+    r.circle(knee, 1.7, c)
+    r.seg(knee, hip, 3.8, c)
+    r.seg(S(ax - 2.2, 1.6), S(ax + 2.6, 1.6), 2.4, 3)       # Schuh
+    if front:
+        r.circle(hip, 2.2, 2)
+
+
+def draw_legs(r, S, R, hip):
+    draw_leg(r, S, R, hip, False)
+    draw_leg(r, S, R, hip, True)
+
+
+def draw_swing(r, hip, ph):
+    # das freie Bein im Wheelie: hängt an der Hüfte, ph = Winkel nach hinten (rad)
+    knee = (hip[0] - 8.6 * math.sin(ph), hip[1] + 8.6 * math.cos(ph))
+    q = ph + 0.3                                            # Knie leicht gebeugt
+    foot = (knee[0] - 8.4 * math.sin(q), knee[1] + 8.4 * math.cos(q))
+    r.seg(hip, knee, 3.8, 1)
+    r.circle(knee, 1.7, 1)
+    r.seg(knee, foot, 3.2, 1)
+    r.seg((foot[0] - 1.5 * math.cos(q), foot[1] - 1.5 * math.sin(q)),
+          (foot[0] + 3.0 * math.cos(q), foot[1] + 3.0 * math.sin(q)), 2.4, 3)
 
 
 def torso_axes(psi):
@@ -352,7 +370,9 @@ def build_rider(K):
     torso = [part(lambda c, j=j: draw_torso(c, O, TORSO_MIN + TORSO_STEP * j)) for j in range(nt)]
     up = [part(lambda c, u=u: draw_up(c, O, ARM_STEP * u, False),      # [Einhänder, No-Hander]
                lambda c, u=u: draw_up(c, O, ARM_STEP * u, True)) for u in range(nu)]
-    sc, legs, bar = [], [], []
+    ns = K["NS"]                      # freies Bein: von 50 Grad nach vorn bis 75 Grad nach hinten
+    swing = part(*[lambda c, u=u: draw_swing(c, O, -0.9 + 2.2 * (u + 0.5) / ns) for u in range(ns)])
+    sc, legs, bleg, bar = [], [], [], []
     tab = bytearray()
 
     def ofs(*values):
@@ -368,11 +388,10 @@ def build_rider(K):
             ofs(sc[i][1], sc[i][2])
             # Beine: im Stehen ein Bild pro Winkel. In der Hocke reicht eines für zwei
             # Winkel (gezeichnet für die Mitte) - das spart Speicher und fällt nicht auf.
-            if pose == 0:
-                legs.append(part(lambda c: draw_legs(c, S, R, hip)))
-            elif i % 2 == 0:
-                S2, R2, hip2, _ = body(math.radians((i + 0.5) * step), pose)
-                legs.append(part(lambda c: draw_legs(c, S2, R2, hip2)))
+            if pose == 0 or i % 2 == 0:
+                S2, R2, hip2, _ = body(math.radians((i + (0.5 if pose else 0)) * step), pose)
+                legs.append(part(lambda c: draw_leg(c, S2, R2, hip2, True)))
+                bleg.append(part(lambda c: draw_leg(c, S2, R2, hip2, False)))
             tab.append(len(legs) - 1)
             ofs(legs[-1][1], legs[-1][2])
             j = torso_tile(K, psi)
@@ -386,18 +405,22 @@ def build_rider(K):
             u = arm_tile(K, i * step)
             tab.append(u)
             ofs(int(sh[0] + 0.5) - B + up[u][1], int(sh[1] + 0.5) - B + up[u][2])
+            ofs(bleg[-1][1], bleg[-1][2], hip[0] - B, hip[1] - B)
     assert len(legs) == K["NL"], "NL in grafik.py muss %d sein" % len(legs)
     assert len(POSES) == K["NP"]
 
-    crash = []                        # drei Bilder: Scooter kippt, Fahrer fällt ab
+    crash = []                        # zwei Bilder: Scooter kippt, Fahrer fällt ab
     last = (n - 1) * step             # größter Winkel der normalen Bilder
-    for k in range(1, 4):
+    for k in (2, 3):
         p = part(lambda c: draw_crash(c, K, last + (100 - last) * k / 3, LEAN + (1 - LEAN) * k / 3))
         crash.append(p)
         ofs(p[1], p[2])
+    ofs(swing[1], swing[2])
 
     cpal = PAL_SCOOTER + PAL_LEGS[1:] + PAL_TORSO[1:]
     out = [("sc", pack([p[0][0] for p in sc]), PAL_SCOOTER),
+           ("bleg", pack([p[0][0] for p in bleg]), PAL_LEGS),
+           ("swing", pack(swing[0]), PAL_LEGS),
            ("legs", pack([p[0][0] for p in legs]), PAL_LEGS),
            ("torso", pack([p[0][0] for p in torso]), PAL_TORSO),
            ("bar", pack([p[0][0] for p in bar]), PAL_ARMS),
@@ -563,8 +586,8 @@ def build_props():
 # ------------------------------------------------------------------
 # Ausgabe
 # ------------------------------------------------------------------
-ORDER = ("font", "sky", "town", "road", "lamp", "tree", "sc", "legs", "torso", "bar", "up",
-         "cr0", "cr1", "cr2", "puff")
+ORDER = ("font", "sky", "town", "road", "lamp", "tree", "sc", "bleg", "swing", "legs", "torso", "bar", "up",
+         "cr0", "cr1", "puff")
 
 
 def bits_for(colors):
@@ -658,9 +681,14 @@ def preview(by_name, tab, K, path):
             im = Image.new("RGB", (width, 62), (236, 228, 208) if arms != 1 else (150, 200, 240))
             for col, i in enumerate((0, 2, 4, 7, 10, 13, 16, 19, n - 1)):
                 f = i + n * pose
-                t = tab[f * 13:f * 13 + 13]
+                t = tab[f * 17:f * 17 + 17]
                 ox, oy = 22 + col * 60, 54
                 blit(im, "sc", i, n, ox + t[0] - 128, oy + t[1] - 128)
+                if arms == 1:
+                    blit(im, "swing", (col * 2 + 3) % K["NS"], K["NS"],
+                         ox + t[15] - 128 + tab[-2] - 128, oy + t[16] - 128 + tab[-1] - 128)
+                else:
+                    blit(im, "bleg", t[2], K["NL"], ox + t[13] - 128, oy + t[14] - 128)
                 blit(im, "legs", t[2], K["NL"], ox + t[3] - 128, oy + t[4] - 128)
                 blit(im, "torso", t[5], K["NT"], ox + t[6] - 128, oy + t[7] - 128)
                 if arms != 2:
@@ -670,8 +698,8 @@ def preview(by_name, tab, K, path):
                          ox + t[11] - 128, oy + t[12] - 128)
             strips.append(im)
     im = Image.new("RGB", (width, 66), (150, 200, 240))
-    for k in range(3):
-        t = tab[len(POSES) * n * 13 + 2 * k:]
+    for k in range(2):
+        t = tab[len(POSES) * n * 17 + 2 * k:]
         blit(im, "cr%d" % k, 0, 1, 60 + k * 90 + t[0] - 128, 58 + t[1] - 128)
     strips.append(im)
     for name in ("sky", "town", "road", "font", "lamp", "tree", "puff", "torso", "up"):

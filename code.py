@@ -59,6 +59,7 @@ NAMES = ("", "EINHÄNDER", "NO-HANDER", "KNIE-TRICK", "KNIE-EINHÄNDER", "KNIE-N
 HELP = ("OBEN = WHEELIE", "LINKS = EINHÄNDER", "UNTEN = KNIE-TRICK", "RECHTS = NO-HANDER",
         "A = GAS  B = BREMSE", "A+B = BURNOUT/BOOST")
 PROP_OFF = (0, 85, 165)       # Laterne, Baum, Laterne (alle 240 Pixel wieder)
+LEG_REACH = 18.5              # so lang ist das freie Bein (Pixel)
 ROAD = 0x3B3B45               # Farbe der Straße (Hintergrund für Schrift unten)
 
 BTN_B, BTN_A, BTN_START, BTN_SELECT, BTN_RIGHT, BTN_DOWN, BTN_UP, BTN_LEFT = \
@@ -141,7 +142,7 @@ class Game:
         self.mark = displayio.TileGrid(self.mark_bmp, y=116,
                                        pixel_shader=gfx.make_palette((0, 0x1E1E24)))
         world.append(self.mark)
-        self.shadow = gfx.make_shadow()
+        self.shadow = gfx.make_strip(40, 1, 0x26262E, 40, AXLE_Y + 5, 1)
         world.append(self.shadow)
         self.rider = rd = gfx.Rider(L)                                 # Scooter und Fahrer
         self.nf = gfx.NF - 1
@@ -211,7 +212,6 @@ class Game:
         self.sx = 0.0           # Straße: wie weit der Mittelstreifen verschoben ist
         self.pp = 0.0           # Laternen und Baum
         self.last_pp = -1
-        self.shadow_n = 10
         self.frames = 0
         self.fps_t = 0.0
         self.toast_t = 0.0
@@ -239,6 +239,8 @@ class Game:
         self.crouch = False     # Knie-Trick (UNTEN gedrückt)
         self.kn = 0.0           # so weit ist er in den Knien: 0 = steht, 2 = ganz unten
         self.dip = 0.0          # federt nach dem Landen kurz in die Knie
+        self.ph = 0.0           # freies Bein im Wheelie: Winkel nach hinten (rad)
+        self.sw = 0.0           # ... und wie schnell es schwingt
         self.wd = 0.0           # Wheelie-Strecke (m)
         self.wt = 0.0           # Wheelie-Zeit (s)
         self.tp = 0.0           # Trick-Punkte in diesem Wheelie
@@ -539,6 +541,31 @@ class Game:
             if self.bv < 0.0:
                 self.bv = 0.0
 
+        # Im Wheelie steht nur ein Fuß auf dem Scooter, das andere Bein schwingt frei:
+        # die Schwerkraft zieht es nach unten, Gas wirft es nach hinten, Kippen bewegt es.
+        if self.th > 0:
+            ph = self.ph
+            sw = self.sw + (math.cos(ph) * (v - v0) / dt * 0.5 + self.om * 4.0
+                            - 16.0 * math.sin(ph) - 1.2 * self.sw) * dt
+            ph += sw * dt
+            k = (5 - self.rider.hy) / LEG_REACH       # Hüfte so tief, dass der Fuß den Boden trifft?
+            k = math.acos(k) if k < 1.0 else -1.0
+            if ph < k:                                # Fuß schlägt auf dem Boden auf und prallt ab
+                ph = k
+                if sw < -0.8:
+                    self.v = v = v * 0.985
+                    self.puffs.emit(REAR_X + 2 - LEG_REACH * math.sin(k), AXLE_Y + 4,
+                                    -20.0, -16.0, 0.3, 0)
+                    self.sound.play(SND_TICK)
+                sw = sw * -0.5 + 1.5
+            elif ph > 1.3:
+                ph = 1.3
+                sw *= -0.4
+            self.ph = ph
+            self.sw = sw
+        else:
+            self.ph = self.sw = 0.0
+
         d = v * dt
         self.dpx = d * PX_PER_M
         self.sx = (self.sx + self.dpx) % 96.0
@@ -676,15 +703,15 @@ class Game:
 
         # Scooter und Fahrer: passendes Bild zum Winkel
         if st == CRASH:
-            k = int((self.th - CRASH_RAD) / (1.746 - CRASH_RAD) * 3)
-            rd.crash(2 if k > 2 else k)
+            rd.crash(1 if self.th > 1.5 else 0)
             i = self.nf
         else:
             i = int((self.th + self.b) * 57.3 / STEP + 0.5)
             if i > self.nf:
                 i = self.nf
             k = int(self.kn + 0.5)
-            rd.show(i, 1 if self.dip > 0 and k == 0 else k, self.arms)
+            rd.show(i, 1 if self.dip > 0 and k == 0 else k, self.arms,
+                    min(11, int(self.ph * 5.45 + 4.9)) if self.th > 0 else -1)
         x = REAR_X + (72 if st == MENU else 0)
         y = AXLE_Y
         if self.shake_t > 0:                    # Wackeln beim Sturz
@@ -696,11 +723,6 @@ class Game:
         rd.g.x = x
         rd.g.y = y
         self.shadow.x = x - 5
-        n = 10 - i // 3                         # Schatten wird im Wheelie kürzer
-        if n != self.shadow_n:
-            self.shadow_n = n
-            for k in range(10):
-                self.shadow[k] = 1 if k < n else 0
         if self.rainbow and self.frames & 1:
             self.body = gfx.rainbow(t * 0.4)
             rd.color(self.body)
