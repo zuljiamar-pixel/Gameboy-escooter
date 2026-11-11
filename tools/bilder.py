@@ -273,9 +273,10 @@ def draw_swing(r, hip, ph):
     knee = (hip[0] - 8.6 * math.sin(ph), hip[1] + 8.6 * math.cos(ph))
     q = ph + 0.3                                            # Knie leicht gebeugt
     foot = (knee[0] - 8.4 * math.sin(q), knee[1] + 8.4 * math.cos(q))
-    r.seg(hip, knee, 3.8, 1)
-    r.circle(knee, 1.7, 1)
-    r.seg(knee, foot, 3.2, 1)
+    r.seg(hip, knee, 3.8, 2)
+    r.circle(knee, 1.7, 2)
+    r.seg(knee, foot, 3.2, 2)
+    r.circle(hip, 2.2, 2)
     r.seg((foot[0] - 1.5 * math.cos(q), foot[1] - 1.5 * math.sin(q)),
           (foot[0] + 3.0 * math.cos(q), foot[1] + 3.0 * math.sin(q)), 2.4, 3)
 
@@ -688,8 +689,8 @@ def preview(by_name, tab, K, path):
                     blit(im, "swing", (col * 2 + 3) % K["NS"], K["NS"],
                          ox + t[15] - 128 + tab[-2] - 128, oy + t[16] - 128 + tab[-1] - 128)
                 else:
-                    blit(im, "bleg", t[2], K["NL"], ox + t[13] - 128, oy + t[14] - 128)
-                blit(im, "legs", t[2], K["NL"], ox + t[3] - 128, oy + t[4] - 128)
+                    blit(im, "legs", t[2], K["NL"], ox + t[3] - 128, oy + t[4] - 128)
+                blit(im, "bleg", t[2], K["NL"], ox + t[13] - 128, oy + t[14] - 128)
                 blit(im, "torso", t[5], K["NT"], ox + t[6] - 128, oy + t[7] - 128)
                 if arms != 2:
                     blit(im, "bar", f, len(POSES) * n, ox + t[8] - 128, oy + t[9] - 128)

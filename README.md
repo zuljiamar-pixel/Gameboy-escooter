@@ -60,7 +60,7 @@ Wichtig: Die Dateien müssen **genau** `code.py` und `grafik.py` heißen
 * **OBEN** reißt das Vorderrad hoch. Jetzt musst du selber balancieren:
   **A** = höher, **B** = tiefer. Die Anzeige oben hilft: grün = sicher,
   gelb = Gleichgewicht, rot = gleich kippst du um.
-* Im Wheelie steht nur **ein Fuß** auf dem Scooter. Das andere Bein schwingt
+* Im Wheelie steht nur der **hintere Fuß** auf dem Scooter. Das vordere Bein schwingt
   frei mit (Gas wirft es nach hinten). Gehst du in die Knie, schlägt der Fuß
   auf dem Boden auf: Es staubt und kostet etwas Tempo.
 * Mit nochmal **OBEN** landest du sauber. Nur dann zählt die Strecke für den

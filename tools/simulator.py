@@ -312,8 +312,8 @@ def main():
     r.tap(UP, 0.07)
     r.run(2.0, controller=balance_bot(30))
     check(g.in_wheelie and g.wmode and not g.meter.hidden, "OBEN = Wheelie, mit A/B gehalten (%.0f Grad)" % math.degrees(g.th))
-    check(g.rider.bleg.hidden and not g.rider.swing.hidden,
-          "im Wheelie steht nur ein Fuß auf dem Scooter, das andere Bein schwingt frei")
+    check(g.rider.legs.hidden and not g.rider.swing.hidden and not g.rider.bleg.hidden,
+          "im Wheelie steht nur der hintere Fuß auf dem Scooter, das vordere Bein schwingt frei")
     r.load("Wheelie")
     r.shot("05_wheelie.png")
     for extra, arms, crouch, word, shot in (([LEFT], 1, False, "EINHÄNDER", "06_einhaender.png"),
@@ -332,7 +332,7 @@ def main():
     tp = g.tp
     r.run(2.5, controller=balance_bot(30, land_after=0.0))
     check(not g.in_wheelie and not g.wmode and g.state == m.PLAY, "nochmal OBEN = sauber gelandet")
-    check(g.rider.swing.hidden and not g.rider.bleg.hidden, "nach dem Landen stehen wieder beide Füße")
+    check(g.rider.swing.hidden and not g.rider.legs.hidden, "nach dem Landen stehen wieder beide Füße")
     check(g.store.best > 30 and g.store.tbest == int(tp), "Rekord %.1f m, Trick-Rekord %d" % (g.store.best, g.store.tbest))
     best, tbest = struct.unpack("<ff", bytes(nvm[4:12]))
     check(abs(best - g.store.best) < 0.01 and int(tbest) == g.store.tbest, "Rekorde im nvm gespeichert")
