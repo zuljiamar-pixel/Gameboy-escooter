@@ -35,6 +35,13 @@ Scooter seine eigene.
 * **Bessere Grafik:** alles wird scharf in der Auflösung vom Handy gezeichnet,
   der Hintergrund bewegt sich in mehreren Ebenen (Wolken, Hochhäuser, Häuser,
   Gehweg, Straße), die Räder drehen sich.
+* **Realistischer** (nur fürs Auge und Ohr, die Fahr-Physik bleibt gleich):
+  weicher Reifenrauch, Bremslicht und Scheinwerfer, Bremsscheiben, Asphalt mit
+  Rissen, weiche Schatten und Sonnenlicht. Der Fahrer lehnt sich beim Gasgeben
+  nach vorn und beim Bremsen nach hinten. Bei einer Vollbremsung quietschen die
+  Reifen und es bleibt eine Bremsspur. Kurz vor dem Umkippen schleift das Heck
+  und sprüht Funken (Warnung!). Der Motor klingt wie ein E-Motor (Summen und
+  Sirren), dazu kommt Fahrtwind.
 * **Touch-Knöpfe:** links WHEELIE / 1 HAND / 0 HAND / KNIE (die kleinen Kreise
   unten sind Knie + Hand zusammen), rechts GAS und BREMSE.
   **BURN** drückt Gas und Bremse zusammen: im Stand halten, bis

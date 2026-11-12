@@ -33,11 +33,15 @@
   // name = so heißt der Scooter im Spiel, kmh = Höchstgeschwindigkeit ohne Tuning,
   // accel = Beschleunigung beim Anfahren (m/s², das Original hat 6.0),
   // dual = hat schon ab Werk zwei Motoren, price = Preis in Münzen,
+  // tail / lamp = dort sitzen Rücklicht und Scheinwerfer,
   // gain = km/h pro Motor-Stufe, cost = Tuning-Teile sind so viel mal teurer
   const SCOOTERS = [
-    { name: 'NINEBOT MAX G3', kmh: 80, accel: 6.0, dual: false, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0 },
-    { name: 'KUKIRIN G4', kmh: 105, accel: 7.5, dual: false, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9 },
-    { name: 'DUALTRON X LIMITED', kmh: 125, accel: 10.5, dual: true, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3 },
+    { name: 'NINEBOT MAX G3', kmh: 80, accel: 6.0, dual: false, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0,
+      tail: [-5.4, 3.6], lamp: [23.9, 18.2] },
+    { name: 'KUKIRIN G4', kmh: 105, accel: 7.5, dual: false, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9,
+      tail: [-4.1, 6.2], lamp: [26.4, 9.6] },
+    { name: 'DUALTRON X LIMITED', kmh: 125, accel: 10.5, dual: true, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3,
+      tail: [-3.2, 7.6], lamp: [27.5, 7.6] },
   ];
   const PARTS = [
     { name: 'MOTOR', info: g => '+' + g + ' KM/H' },
@@ -153,8 +157,35 @@
   // ------------------------------------------------------------------
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
-  let W = 160, H = 120, SC = 1, GY = 92, RX = 60, IL = 0, IR = 0, skyGrad = null, roadGrad = null;
+  let W = 160, H = 120, SC = 1, GY = 92, RX = 60, IL = 0, IR = 0, skyGrad = null;
+  const lightCanvas = document.createElement('canvas'), roadCanvas = document.createElement('canvas');
 
+  const ROAD_W = 96;                      // Breite der Asphalt-Kachel (Einheiten)
+  const asphalt = (() => {
+    // Asphalt: Körnung, feine Risse und geflickte Stellen (einmal gemalt, dann nur noch verschoben)
+    const c = document.createElement('canvas'), k = 6;
+    c.width = ROAD_W * k; c.height = 36 * k;
+    const x = c.getContext('2d');
+    let seed = 12345;
+    const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let i = 0; i < 2600; i++) {
+      const light = rnd() < 0.5, y = rnd() * c.height;
+      x.fillStyle = light ? 'rgba(255,255,255,' + (0.03 + rnd() * 0.07) + ')' : 'rgba(0,0,0,' + (0.05 + rnd() * 0.12) + ')';
+      x.fillRect(rnd() * c.width, y, 1 + rnd() * (1.5 + y / 60), 1 + rnd() * 1.5);
+    }
+    x.fillStyle = 'rgba(0,0,0,0.10)';                           // geflickte Stelle
+    x.fillRect(38 * k, 9 * k, 22 * k, 7 * k);
+    x.strokeStyle = 'rgba(0,0,0,0.22)'; x.lineWidth = 1;
+    x.strokeRect(38 * k, 9 * k, 22 * k, 7 * k);
+    x.strokeStyle = 'rgba(0,0,0,0.3)'; x.lineWidth = 1.2; x.lineJoin = 'round';
+    for (const [x0, y0] of [[8, 4], [70, 20], [22, 26]]) {      // Risse
+      x.beginPath(); x.moveTo(x0 * k, y0 * k);
+      let px = x0 * k, py = y0 * k;
+      for (let j = 0; j < 9; j++) { px += (4 + rnd() * 9); py += (rnd() - 0.5) * 12; x.lineTo(px, py); }
+      x.stroke();
+    }
+    return c;
+  })();
   function resize() {
     const cw = window.innerWidth || 320, ch = window.innerHeight || 240;
     const dpr = min(window.devicePixelRatio || 1, max(1, 1080 / ch));
@@ -172,9 +203,26 @@
     skyGrad.addColorStop(0, '#2f7fd6');
     skyGrad.addColorStop(0.6, '#6fb4ee');
     skyGrad.addColorStop(1, '#bfe3f8');
-    roadGrad = ctx.createLinearGradient(0, GY - 7, 0, H);
-    roadGrad.addColorStop(0, '#43434e');
-    roadGrad.addColorStop(1, '#2b2b34');
+    // Sonnenlicht von rechts oben + dunklere Ränder: einmal vormalen, später nur noch darüberlegen
+    const lw = canvas.width, lh = canvas.height, lx = lightCanvas.getContext('2d');
+    lightCanvas.width = lw; lightCanvas.height = lh;
+    let g = lx.createLinearGradient(lw, 0, lw * 0.3, lh * 0.9);
+    g.addColorStop(0, 'rgba(255,214,140,0.22)');
+    g.addColorStop(0.6, 'rgba(255,214,140,0.04)');
+    g.addColorStop(1, 'rgba(40,50,90,0.10)');
+    lx.fillStyle = g; lx.fillRect(0, 0, lw, lh);
+    g = lx.createRadialGradient(lw / 2, lh * 0.48, lh * 0.45, lw / 2, lh * 0.48, Math.hypot(lw, lh) * 0.56);
+    g.addColorStop(0, 'rgba(6,8,20,0)');
+    g.addColorStop(1, 'rgba(6,8,20,0.34)');
+    lx.fillStyle = g; lx.fillRect(0, 0, lw, lh);
+    // Asphalt in der passenden Größe vormalen (dann muss beim Zeichnen nichts mehr skaliert werden)
+    roadCanvas.width = Math.ceil(ROAD_W * SC); roadCanvas.height = Math.ceil(37 * SC);
+    const rx = roadCanvas.getContext('2d', { alpha: false });
+    g = rx.createLinearGradient(0, 0, 0, roadCanvas.height);
+    g.addColorStop(0, '#43434e');
+    g.addColorStop(1, '#2b2b34');
+    rx.fillStyle = g; rx.fillRect(0, 0, roadCanvas.width, roadCanvas.height);
+    rx.drawImage(asphalt, 0, 0, roadCanvas.width, roadCanvas.height);
   }
   window.addEventListener('resize', resize);
   resize();
@@ -255,24 +303,35 @@
   // ------------------------------------------------------------------
   // Ton
   // ------------------------------------------------------------------
-  let ac = null, engOsc = null, engGain = null, beeps = [];
+  let ac = null, beeps = [], snd = null;
   function audioInit() {
     try {
       if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       ac = new AC();
-      engOsc = ac.createOscillator();
-      engOsc.type = 'sawtooth';
-      engOsc.frequency.value = 120;
-      const lp = ac.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 1600;
-      engGain = ac.createGain();
-      engGain.gain.value = 0;
-      engOsc.connect(lp); lp.connect(engGain); engGain.connect(ac.destination);
-      engOsc.start();
-    } catch (e) { ac = null; }
+      const gain = (v, to) => { const g = ac.createGain(); g.gain.value = v; g.connect(to); return g; };
+      const osc = (type, to) => { const o = ac.createOscillator(); o.type = type; o.connect(to); o.start(); return o; };
+      const filter = (type, f, q, to) => {
+        const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(to); return b;
+      };
+      const out = gain(0.9, ac.destination);
+      // E-Motor: tiefes Summen + das typische hohe Sirren, das mit dem Tempo steigt
+      const motor = gain(0, out), mlp = filter('lowpass', 900, 0.7, motor);
+      const hum = osc('triangle', mlp), hum2 = osc('sawtooth', gain(0.35, mlp));
+      const whine = gain(0, out), wh = osc('sine', whine), wh2 = osc('triangle', gain(0.3, whine));
+      // Rauschen für Fahrtwind, quietschende Reifen und Schleifen
+      const n = ac.sampleRate * 2, buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = random() * 2 - 1;
+      const noise = ac.createBufferSource();
+      noise.buffer = buf; noise.loop = true;
+      const wind = gain(0, out), wlp = filter('lowpass', 400, 0.5, wind);
+      const tyre = gain(0, out), tbp = filter('bandpass', 1300, 9, tyre), tbp2 = filter('bandpass', 2100, 6, gain(0.5, tyre));
+      const scrape = gain(0, out), sbp = filter('bandpass', 3400, 1.2, scrape);
+      noise.connect(wlp); noise.connect(tbp); noise.connect(tbp2); noise.connect(sbp);
+      noise.start();
+      snd = { motor, mlp, hum, hum2, whine, wh, wh2, wind, wlp, tyre, tbp, tbp2, scrape };
+    } catch (e) { ac = null; snd = null; }
   }
   function play(notes) {
     if (!ac || !store.sound) return;
@@ -294,16 +353,28 @@
       }
     } catch (e) { /* egal */ }
   }
-  function engineSound(speed, gas, wild) {
-    // speed 0..1; wild = 1 Burnout, 2 Boost (Motor heult, Reifen quietscht)
-    if (!ac) return;
-    let amp = 0.0, freq = 150 + 600 * speed + (gas ? 50 : 0);
-    if (wild === 1) { amp = 0.12; freq = 650 + randint(-80, 80); }
-    else if (wild) { amp = 0.14; freq += 300; }
-    else if (speed > 0.02) amp = 0.04 + (gas ? 0.05 : 0.0);
+  function engineSound(v, gas, wild, skid, scrape, dual) {
+    // v = Tempo (m/s); wild = 1 Burnout, 2 Boost; skid = Reifen rutschen (0..1); scrape = es schleift
+    if (!ac || !snd) return;
     try {
-      engGain.gain.setTargetAtTime(store.sound ? amp * 0.6 : 0, ac.currentTime, 0.03);
-      engOsc.frequency.setTargetAtTime(freq, ac.currentTime, 0.03);
+      const t = ac.currentTime, on = store.sound ? 1 : 0;
+      const set = (param, value, tc) => param.setTargetAtTime(value, t, tc || 0.04);
+      const rev = wild === 1 ? 26 + random() * 2 : v;         // im Burnout dreht der Motor hoch
+      const load = wild ? 1 : gas ? 0.75 : 0.25;
+      const f = 55 + rev * 9 + (wild === 2 ? 40 : 0);
+      set(snd.hum.frequency, f); set(snd.hum2.frequency, f * 2.01);
+      set(snd.wh.frequency, f * (dual ? 6.2 : 5.3)); set(snd.wh2.frequency, f * 8.07);
+      set(snd.mlp.frequency, 500 + rev * 40);
+      const run = rev > 0.3 || gas ? 1 : 0;
+      set(snd.motor.gain, on * run * (0.035 + 0.075 * load));
+      set(snd.whine.gain, on * run * min(1, rev / 12) * (0.008 + 0.03 * load) * (dual ? 1.4 : 1));
+      set(snd.wind.gain, on * min(0.16, v * v * 0.00009), 0.15);
+      set(snd.wlp.frequency, 250 + v * 28, 0.15);
+      const sq = wild === 1 ? (dual ? 1 : 0.8) : skid * 0.6;
+      set(snd.tyre.gain, on * sq * 0.5, 0.03);
+      set(snd.tbp.frequency, 1150 + 250 * sin(G.t * 23) + (wild === 1 ? 150 : v * 10), 0.02);
+      set(snd.tbp2.frequency, 1900 + 300 * sin(G.t * 17), 0.02);
+      set(snd.scrape.gain, on * (scrape ? 0.16 : 0), 0.02);
     } catch (e) { /* egal */ }
   }
   function buzz(ms) {
@@ -356,6 +427,23 @@
     circ([x0 + size * 0.45, y + size * 0.5], size * 0.33, '#ffd23f');
     text(s, x0 + size * 1.15, y, size, color || '#ffffff', 0);
   }
+  function glowSprite(r, g, b, hard) {
+    // runder weicher Fleck (für Rauch, Lichter und Schatten)
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    const col = a => 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+    gr.addColorStop(0, col(1)); gr.addColorStop(hard || 0.35, col(0.7)); gr.addColorStop(0.75, col(0.18)); gr.addColorStop(1, col(0));
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    return c;
+  }
+  const SPR = { smoke: glowSprite(236, 236, 240, 0.5), grey: glowSprite(170, 170, 180, 0.5), dust: glowSprite(196, 180, 150),
+    dark: glowSprite(0, 0, 0, 0.45), red: glowSprite(255, 40, 30), warm: glowSprite(255, 240, 180), fire: glowSprite(255, 140, 40) };
+  function glow(spr, x, y, rx, ry, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(spr, x - rx, y - (ry || rx), rx * 2, (ry || rx) * 2);
+    ctx.globalAlpha = 1;
+  }
   function hash(n, k) {
     let x = Math.imul(n | 0, 374761393) + Math.imul(k | 0, 668265263);
     x = Math.imul(x ^ (x >>> 13), 1274126177);
@@ -405,19 +493,24 @@
     return { S, hip, cp, sp, th, psi: th * 180 / PI * lean + A[2] + (B[2] - A[2]) * f };
   }
 
-  function wheel(p, r, rot, kind, col, motor) {
-    // kind: 0 normal, 1 Stollen (Gelände), 2 extra breit
-    circ(p, r, '#17171c');
+  function wheel(p, r, rot, kind, col, motor, th, spin) {
+    // kind: 0 normal, 1 Stollen (Gelände), 2 extra breit; spin = wie schnell es dreht (rad/s)
+    circ(p, r, '#15151a');
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = '#26262d'; ctx.lineWidth = 0.45;         // Flanke vom Reifen
+    ctx.beginPath(); ctx.arc(p[0], p[1], r - (kind === 2 ? 1.6 : 1.1), 0, 2 * PI); ctx.stroke();
     if (kind === 1) {
-      ctx.strokeStyle = '#2c2c34'; ctx.lineWidth = 1.1; ctx.lineCap = 'butt';
+      ctx.strokeStyle = '#2c2c34'; ctx.lineWidth = 1.1;
       ctx.setLineDash([1.1, 1.3]); ctx.lineDashOffset = -rot * r;
       ctx.beginPath(); ctx.arc(p[0], p[1], r - 0.45, 0, 2 * PI); ctx.stroke();
       ctx.setLineDash([]);
     }
-    const ri = r * (kind === 2 ? 0.46 : 0.56);
+    const ri = r * (kind === 2 ? 0.46 : 0.56), fast = clamp((Math.abs(spin || 0) - 18) / 30, 0, 1);
     if (kind === 2) circ(p, ri + 0.7, col);
-    circ(p, ri, '#a8aeb6');
-    ctx.strokeStyle = '#5d636e'; ctx.lineWidth = 0.7; ctx.lineCap = 'butt';
+    circ(p, ri, '#8d939d');
+    circ(p, ri - 0.5, '#aeb4bd');
+    ctx.strokeStyle = '#555b66'; ctx.lineWidth = 0.75;         // Speichen (verwischen bei hohem Tempo)
+    ctx.globalAlpha = 1 - 0.75 * fast;
     ctx.beginPath();
     for (let k = 0; k < 3; k++) {
       const a = rot + k * PI / 3;
@@ -425,9 +518,26 @@
       ctx.lineTo(p[0] + cos(a) * ri, p[1] + sin(a) * ri);
     }
     ctx.stroke();
-    if (motor) { circ(p, r * 0.36, '#3a3b44'); circ(p, r * 0.27, '#17171c'); circ(p, r * 0.1, '#a8aeb6'); }
+    ctx.globalAlpha = 1;
+    if (fast > 0) {
+      ctx.strokeStyle = 'rgba(85,91,102,' + (0.35 * fast) + ')'; ctx.lineWidth = ri * 0.5;
+      ctx.beginPath(); ctx.arc(p[0], p[1], ri * 0.62, 0, 2 * PI); ctx.stroke();
+    }
+    const rd = r * 0.4;                                        // Bremsscheibe mit Löchern
+    ctx.strokeStyle = '#d6dae0'; ctx.lineWidth = r * 0.11;
+    ctx.beginPath(); ctx.arc(p[0], p[1], rd, 0, 2 * PI); ctx.stroke();
+    if (fast < 1) {
+      ctx.strokeStyle = 'rgba(70,74,84,' + (0.8 - 0.8 * fast) + ')'; ctx.lineWidth = r * 0.05;
+      ctx.setLineDash([0.35, rd * PI / 4 - 0.35]); ctx.lineDashOffset = -rot * rd;
+      ctx.beginPath(); ctx.arc(p[0], p[1], rd, 0, 2 * PI); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (motor) { circ(p, r * 0.33, '#3a3b44'); circ(p, r * 0.25, '#17171c'); circ(p, r * 0.1, '#a8aeb6'); }
     else circ(p, r * 0.2, '#17171c');
-    ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 0.6;     // Glanz auf dem Reifen
+    const a = rad(135) + (th || 0);                            // Bremssattel (dreht sich nicht mit)
+    const q = [p[0] + cos(a) * rd, p[1] - sin(a) * rd];
+    seg([q[0] - sin(a) * 0.7, q[1] - cos(a) * 0.7], [q[0] + sin(a) * 0.7, q[1] + cos(a) * 0.7], r * 0.26, '#c4282a');
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 0.6; ctx.lineCap = 'butt';     // Glanz auf dem Reifen
     ctx.beginPath(); ctx.arc(p[0], p[1], r - 0.8, -2.4, -1.2); ctx.stroke();
   }
 
@@ -438,13 +548,13 @@
     ctx.beginPath(); ctx.arc(p[0], p[1], r + 1.5, -(rad(a1) + th), -(rad(a0) + th)); ctx.stroke();
   }
 
-  function drawScooter(model, S, th, col, rotF, rotR, dual) {
+  function drawScooter(model, S, th, col, rotF, rotR, dual, spinF, spinR) {
     const c = hex(col), cd = shade(col, -0.3), cl = shade(col, 0.35);
     const D = '#17171c', D2 = '#2a2b33', M = '#a8aeb6', r = model.r, wb = model.wb;
     if (model === SCOOTERS[0]) {
       // --- Ninebot Max G3: schlank, Pendler-Scooter ---
-      wheel(S(0, 0), r, rotR, 0, c, true);
-      wheel(S(wb, 0), r, rotF, 0, c, dual);
+      wheel(S(0, 0), r, rotR, 0, c, true, th, spinR);
+      wheel(S(wb, 0), r, rotF, 0, c, dual, th, spinF);
       fender(S, th, 0, r, 35, 150, D2);
       circ(S(-5.4, 3.6), 0.9, '#ff3b30');                       // Rücklicht
       fender(S, th, wb, r, 40, 140, D2);
@@ -454,6 +564,7 @@
       seg(S(3, 0.9), S(19, 0.9), 0.9, D2);                      // Gummi-Matte
       seg(S(19.5, -0.8), S(24.3, 5.0), 3.0, c);                 // Hals
       seg(S(24.3, 5.0), S(21.3, 22.5), 2.4, D2);                // Lenkstange
+      seg(S(24.7, 6.0), S(21.9, 22.0), 0.5, 'rgba(255,255,255,0.22)');
       seg(S(24.0, 6.6), S(23.1, 12), 2.5, c);
       seg(S(18.6, 22.8), S(23.8, 22.8), 2.4, D);                // Lenker
       seg(S(20.6, 24.2), S(22.6, 24.2), 1.2, '#2bd4ff');        // Display
@@ -462,8 +573,8 @@
       // --- Kukirin G4: kräftig, Gelände-Reifen, Federung ---
       seg(S(0, 0), S(5, 0.2), 2.6, D2);                         // Schwinge hinten
       seg(S(wb, 0), S(22.4, 2.6), 2.6, D2);                     // Schwinge vorn
-      wheel(S(0, 0), r, rotR, 1, c, true);
-      wheel(S(wb, 0), r, rotF, 1, c, dual);
+      wheel(S(0, 0), r, rotR, 1, c, true, th, spinR);
+      wheel(S(wb, 0), r, rotF, 1, c, dual, th, spinF);
       fender(S, th, 0, r, 50, 135, D);
       fender(S, th, wb, r, 45, 140, D);
       seg(S(25.4, 1.6), S(23.4, 7.6), 1.9, '#e8322b');          // Feder vorn
@@ -485,8 +596,8 @@
       // --- Dualtron X Limited: riesig, doppelte Lenkstange, fette Reifen ---
       seg(S(0, 0), S(6, 1.2), 3.6, D2);                         // Schwingen
       seg(S(wb, 0), S(23.4, 1.4), 3.6, D2);
-      wheel(S(0, 0), r, rotR, 2, c, true);
-      wheel(S(wb, 0), r, rotF, 2, c, dual);
+      wheel(S(0, 0), r, rotR, 2, c, true, th, spinR);
+      wheel(S(wb, 0), r, rotF, 2, c, dual, th, spinF);
       fender(S, th, wb, r, 55, 135, D);
       seg(S(27.6, 1.6), S(24.6, 8.4), 2.2, '#ffc83d');          // Federbein vorn
       seg(S(27.6, 1.6), S(24.6, 8.4), 0.7, '#fff3b8');
@@ -498,6 +609,7 @@
       seg(S(5.6, -2.5), S(21.6, -2.5), 0.6, cl);                // LED-Leiste
       seg(S(4.4, 2.4), S(21.6, 2.4), 0.9, '#3a3b44');
       seg(S(22.6, 2.0), S(19.9, 23.0), 2.0, c);                 // doppelte Lenkstange
+      seg(S(22.9, 3.0), S(20.3, 22.4), 0.5, cl);
       seg(S(25.6, 2.6), S(22.7, 23.0), 2.0, c);
       seg(S(24.0, 8.0), S(22.0, 8.0), 1.3, D);
       seg(S(22.9, 15.5), S(21.0, 15.5), 1.3, D);
@@ -574,18 +686,36 @@
   }
 
   function drawRider(x, y, o) {
-    // o: model, col, th, pose, arms, swing (Winkel oder null), lean, rotF, rotR
+    // o: model, col, th, pose, arms, swing (Winkel oder null), lean, rotF, rotR, spinF, spinR,
+    //    dual, tilt (Oberkörper neigt sich beim Gasgeben und Bremsen, Grad), brake, light
     const model = o.model, g = body(o.th, o.pose, o.lean, model.dy);
     ctx.save();
     ctx.translate(x, y);
-    drawScooter(model, g.S, o.th, o.col, o.rotF, o.rotR, o.dual);
+    const lamp = g.S(model.lamp[0], model.lamp[1]), tail = g.S(model.tail[0], model.tail[1]);
+    if (o.light) {                                              // Lichtkegel vom Scheinwerfer
+      ctx.save();
+      ctx.translate(lamp[0], lamp[1]);
+      ctx.rotate(0.16 - o.th);
+      const gr = ctx.createLinearGradient(0, 0, 62, 0);
+      gr.addColorStop(0, 'rgba(255,244,190,0.30)'); gr.addColorStop(1, 'rgba(255,244,190,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.moveTo(0, -1); ctx.lineTo(62, -9); ctx.lineTo(62, 13); ctx.lineTo(0, 1); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    drawScooter(model, g.S, o.th, o.col, o.rotF, o.rotR, o.dual, o.spinF, o.spinR);
+    if (o.light) {
+      glow(SPR.warm, lamp[0], lamp[1], 4.2, 0, 0.75);
+      glow(SPR.red, tail[0], tail[1], o.brake ? 6.5 : 2.6, 0, o.brake ? 0.95 : 0.5);    // Bremslicht
+      if (o.brake) circ(tail, 0.9, '#ffd0c8');
+    }
     drawLeg(g, model, false);
     if (o.swing !== null) drawSwing(g.hip, o.swing); else drawLeg(g, model, true);
-    const sh = drawTorso(g.hip, g.psi, o.col);
+    const psi = g.psi + (o.tilt || 0);
+    const sh = drawTorso(g.hip, psi, o.col);
     circ(g.hip, 2.2, LEG_F);
     const phi = o.th * 180 / PI * o.lean;
     if (o.arms === 2) drawUpArm(sh, phi, 1);
-    else drawBarArm(sh, g.S(20.3, 22.8), g.psi);
+    else drawBarArm(sh, g.S(20.3, 22.8), psi);
     if (o.arms) drawUpArm(sh, phi, -1);
     ctx.restore();
   }
@@ -687,9 +817,18 @@
     ctx.fillStyle = '#b9b9c3'; ctx.fillRect(0, base, W, 7.5);    // Gehweg
     ctx.fillStyle = '#9d9da8';
     cells(dist, 20, (n, x) => ctx.fillRect(x, base + 0.5, 0.7, 6.5));
+    cells(dist, 20, (n, x) => {
+      ctx.fillStyle = 'rgba(0,0,0,' + (hash(n, 21) * 0.07) + ')';
+      ctx.fillRect(x + 0.7, base + 0.7, 19.3, 6.3);
+    });
+    ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(0, base + 0.7, W, 1.3);      // Schatten der Häuser
     ctx.fillStyle = '#d0d0d8'; ctx.fillRect(0, base, W, 0.7);
     ctx.fillStyle = '#7a7a86'; ctx.fillRect(0, base + 7, W, 2.6);    // Bordstein
-    ctx.fillStyle = roadGrad; ctx.fillRect(0, base + 9.5, W, H - base);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);                         // Asphalt: Pixel für Pixel kopieren
+    const rw = roadCanvas.width, ry = Math.floor((base + 9.5) * SC);
+    for (let x = -Math.round((((dist % ROAD_W) + ROAD_W) % ROAD_W) * SC); x < canvas.width; x += rw)
+      ctx.drawImage(roadCanvas, x, ry);
+    ctx.setTransform(SC, 0, 0, SC, 0, 0);
     ctx.fillStyle = '#8e8e99'; ctx.fillRect(0, base + 9.5, W, 0.8);
     ctx.fillStyle = '#ededed';                                  // Mittelstreifen
     cells(dist * 1.25, 64, (n, x) => ctx.fillRect(x, GY + 12, 32, 2.2));
@@ -702,11 +841,15 @@
 
     cells(dist, 80, (n, x) => {                                 // Laternen und Bäume am Gehweg
       const by = base + 6;
+      glow(SPR.dark, x + (((n % 3) + 3) % 3 === 1 ? 11 : 7), by + 0.2, ((n % 3) + 3) % 3 === 1 ? 10 : 5, 1.5, 0.45);
       if (((n % 3) + 3) % 3 === 1) {
         ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x + 6.5, by - 16, 3, 16);
+        ctx.fillStyle = '#4d351f'; ctx.fillRect(x + 8.5, by - 16, 1, 16);
+        circ([x + 9, by - 17.5], 6.5, '#2f7a3d');
         circ([x + 8, by - 21], 8.5, '#3d8f4b');
         circ([x + 6, by - 24], 5.4, '#55b462');
         circ([x + 12, by - 19], 3.4, '#55b462');
+        circ([x + 4.5, by - 25.5], 2.4, '#6cc777');
       } else {
         ctx.fillStyle = '#2e323a'; ctx.fillRect(x + 3, by - 4, 4, 4);
         ctx.fillStyle = '#4a4f5a'; ctx.fillRect(x + 4.2, by - 33, 1.7, 30);
@@ -720,33 +863,51 @@
   // ------------------------------------------------------------------
   // Rauch, Staub und Boost-Flammen
   // ------------------------------------------------------------------
+  // kind: 0 Rauch, 1 Staub, 2 Bremsrauch, 3 Flamme, 4 Funke
   const puffs = [];
   function emitPuff(x, y, vx, vy, life, kind) {
-    if (puffs.length < 60) puffs.push({ x, y, vx, vy, age: 0, life, kind });
+    if (puffs.length < 220) puffs.push({ x, y, vx, vy, age: 0, life, kind, s: 0.8 + random() * 0.5 });
+  }
+  function sparks(x, y, n, speed) {
+    for (let i = 0; i < n; i++)
+      emitPuff(x, y, -speed * (0.3 + random()), -20 - random() * 70, 0.18 + random() * 0.3, 4);
   }
   function updatePuffs(dt, scroll) {
+    const k = Math.pow(0.96, dt * 30);
     for (let i = puffs.length - 1; i >= 0; i--) {
       const p = puffs[i];
       p.age += dt;
       if (p.age >= p.life) { puffs.splice(i, 1); continue; }
       p.x += p.vx * dt - scroll;
       p.y += p.vy * dt;
-      p.vx *= Math.pow(0.96, dt * 30);
+      if (p.kind === 4) {                       // Funken fallen und springen einmal auf
+        p.vy += 330 * dt;
+        if (p.y > GY && p.vy > 0) { p.y = GY; p.vy *= -0.35; p.vx *= 0.6; }
+      } else {
+        p.vx *= k;
+        if (p.kind < 3) { p.vy = p.vy * k - 5 * dt; }           // Rauch steigt langsam weiter auf
+      }
     }
   }
   function drawPuffs() {
     for (const p of puffs) {
-      const f = p.age / p.life;
-      if (p.kind) {                                             // Flamme: wird kleiner
+      const f = p.age / p.life, kind = p.kind;
+      if (kind === 3) {                                         // Flamme: wird kleiner
         const r = 5.4 - 3.4 * f;
+        ctx.globalCompositeOperation = 'lighter';
+        glow(SPR.fire, p.x, p.y, r * 2.4, 0, 0.5 * (1 - f));
+        ctx.globalCompositeOperation = 'source-over';
         circ([p.x, p.y], r, '#e8473c');
         circ([p.x, p.y], r * 0.75, '#ffb52e');
         circ([p.x, p.y], r * 0.4, '#fff3a0');
-      } else {                                                  // Rauch: wird größer
-        ctx.globalAlpha = 0.85 * (1 - f * f);
-        circ([p.x, p.y], 2.2 + 3.6 * f, '#b4b4bc');
-        circ([p.x - 0.4, p.y - 0.4], 1.4 + 2.9 * f, '#e6e6ea');
-        ctx.globalAlpha = 1;
+      } else if (kind === 4) {                                  // Funke: kurzer heller Strich
+        ctx.strokeStyle = f < 0.4 ? '#fff6c8' : f < 0.75 ? '#ffc04a' : '#ff7a2a';
+        ctx.lineWidth = 0.55; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.018, p.y - p.vy * 0.018); ctx.stroke();
+      } else {                                                  // Rauch und Staub: weich, wird größer und dünner
+        const r = (kind === 0 ? 3.4 + 8.5 * f : 2.2 + 5.5 * f) * p.s;
+        const a = (kind === 0 ? 0.8 : kind === 1 ? 0.5 : 0.34) * (1 - f) * min(1, p.age * 12);
+        glow(kind === 1 ? SPR.dust : f > 0.5 || kind === 2 ? SPR.grey : SPR.smoke, p.x, p.y, r, 0, a);
       }
     }
   }
@@ -761,6 +922,7 @@
     markX: -99, markLen: 0, emit: 0, big: '', sub: '', msg: '', toast: '', toastT: 0, recordT: 0,
     rotF: 0, rotR: 0, hy: -18, tuning: false, lines: [0, 1, 2, 3].map(() => ({ x: -99, y: 0 })),
     body: 0x19C2A0, fps: 0, frames: 0, fpsT: 0,
+    marks: [], skid: 0, accS: 0, scrape: false,       // Bremsspuren, rutschende Reifen, Beschleunigung (geglättet)
   };
   const model = () => SCOOTERS[store.scooter];
   const axleY = () => GY - model().r;
@@ -775,6 +937,7 @@
     G.markX = -99; G.markLen = 0; G.emit = 0;
     G.big = ''; G.sub = ''; G.msg = ''; G.toast = ''; G.toastT = 0;
     puffs.length = 0;
+    G.marks.length = 0; G.skid = 0; G.accS = 0; G.scrape = false;
     for (const l of G.lines) l.x = -99;
   }
   function gotoMenu() { G.state = MENU; G.tuning = false; resetRide(); }
@@ -870,14 +1033,14 @@
       G.markLen = min(40, t1 * 30);             // Reifenspur wird länger
       if (t1 >= BURNOUT_TIME && BURNOUT_TIME > t0) play(SND_READY);
       if (t1 >= BURNOUT_TIME) G.sub = floor(G.t * 5) & 1 ? 'BREMSE LOS = BOOST!' : '';
-      G.emit += dt * 16;                        // Rauch am Hinterrad
-      if (G.emit >= 1) {
+      G.emit += dt * 22;                        // Rauch am Hinterrad
+      while (G.emit >= 1) {
         G.emit -= 1;
-        emitPuff(RX - 3 + randint(-2, 2), GY - 2, -25 - random() * 35, -12 - random() * 18,
-          0.7 + random() * 0.5, 0);
+        emitPuff(RX - 2 + randint(-2, 2), GY - 1.5, -18 - random() * 40, -6 - random() * 16,
+          0.9 + random() * 0.9, 0);
         if (dual)                               // Dual-Motor: auch das Vorderrad dreht durch
-          emitPuff(RX + model().wb - 3 + randint(-2, 2), GY - 2, -25 - random() * 35,
-            -12 - random() * 18, 0.7 + random() * 0.5, 0);
+          emitPuff(RX + model().wb - 2 + randint(-2, 2), GY - 1.5, -18 - random() * 40,
+            -6 - random() * 16, 0.9 + random() * 0.9, 0);
       }
       G.rotR += dt * 45;
       if (dual) G.rotF += dt * 45;
@@ -918,7 +1081,7 @@
         ph = k;
         if (sw < -0.8) {
           G.v = v = v * 0.985;
-          emitPuff(RX + 2 - LEG_REACH * sin(k), GY - 1, -20.0, -16.0, 0.3, 0);
+          emitPuff(RX + 2 - LEG_REACH * sin(k), GY - 1, -20.0, -16.0, 0.45, 1);
           play(SND_TICK);
         }
         sw = sw * -0.5 + 1.5;
@@ -934,6 +1097,20 @@
     const d = v * dt;
     G.dpx = d * PX_PER_M;
 
+    // Nur fürs Auge und Ohr (ändert die Fahr-Physik nicht):
+    G.accS += ((v - v0) / dt - G.accS) * min(1, dt * 7);          // Beschleunigung, geglättet
+    const skid = brake && G.th === 0 && v > 7 && !G.burn;         // Vollbremsung: Reifen rutschen
+    if (skid) {
+      if (!G.skid) G.marks.push({ x: RX, len: 0 });
+      const mk = G.marks[G.marks.length - 1];
+      mk.x = RX + G.dpx; mk.len += G.dpx;
+      G.emit += dt * 14;
+      if (G.emit >= 1) { G.emit -= 1; emitPuff(RX - 1, GY - 1, -8 - random() * 14, -5 - random() * 8, 0.5 + random() * 0.3, 2); }
+    }
+    G.skid = skid ? min(1, v / 20) : 0;
+    G.scrape = G.th > 1.08 && v > 1;                              // kurz vor dem Umkippen schleift das Heck
+    if (G.scrape) sparks(RX - model().r * 0.9, GY - 0.5, random() < dt * 70 ? 2 : 0, 30 + v * 3);
+
     if (G.th > 0 && !G.inWheelie) {
       G.inWheelie = true;
       G.wd = 0.0; G.wt = 0.0; G.tp = 0.0; G.bannerT = 0.0; G.msg = '';
@@ -946,7 +1123,8 @@
     if (G.th >= CRASH_RAD) { crash(); return; }
     if (landed) {
       G.wmode = false; G.landing = false; G.dip = 0.16;
-      if (v > 2) emitPuff(RX + model().wb, GY - 1, -10.0, -14.0, 0.3, 0);    // Staub beim Aufsetzen
+      if (v > 2) for (let i = 0; i < 3; i++)      // Staub beim Aufsetzen
+        emitPuff(RX + model().wb + randint(-2, 2), GY - 1, -10.0 - random() * 20, -8.0 - random() * 12, 0.5, 1);
       if (G.inWheelie) endWheelie();
     }
     if (G.bannerT > 0) {
@@ -982,7 +1160,8 @@
   function crash() {
     G.state = CRASH;
     G.inWheelie = false; G.wmode = false; G.landing = false; G.burn = false; G.boost = false;
-    G.crashT = 0.0; G.shakeT = 0.4; G.bannerT = 0.0;
+    G.crashT = 0.0; G.shakeT = 0.4; G.bannerT = 0.0; G.skid = 0;
+    sparks(RX - 4, GY - 1, 14, 60 + G.v * 3);
     G.big = 'GESTÜRZT!';
     G.sub = G.wd >= MIN_WHEELIE ? G.wd.toFixed(1) + ' M ZÄHLT NICHT' : 'AUTSCH!';
     G.msg = '';
@@ -998,6 +1177,8 @@
     }
     G.v = max(0.0, G.v - 7.0 * dt);
     G.dpx = G.v * dt * PX_PER_M;
+    G.scrape = G.th >= 1.6 && G.v > 1.5;        // der Scooter rutscht auf dem Lenker: Funken
+    if (G.scrape && random() < dt * 60) sparks(RX - 6 - random() * 16, GY - 0.5, 2, 20 + G.v * 3);
     if (G.crashT > 1.0) {
       G.msg = floor(G.t * 2.5) & 1 ? '' : (usedTouch ? 'TIPPEN = NOCHMAL' : 'START = NOCHMAL');
       if ((pressed & (BTN_START | BTN_A)) || (taps.length && !tapped(W / 2 - 22, 58, 44, 13))) {
@@ -1204,6 +1385,10 @@
       G.rotF += G.dpx / mdl.r;
       G.rotR += G.dpx / mdl.r;
       if (G.markLen && !G.burn) { G.markX -= G.dpx; if (G.markX < -50) G.markLen = 0; }
+      for (let i = G.marks.length - 1; i >= 0; i--) {
+        G.marks[i].x -= G.dpx;
+        if (G.marks[i].x < -5) G.marks.splice(i, 1);
+      }
       updatePuffs(dt, G.dpx);
     }
     drawWorld(G.dist, t);
@@ -1212,6 +1397,11 @@
     const rgb = COLORS[store.color[store.scooter]][1];
     G.body = rgb < 0 ? rainbow(t * 0.4) : rgb;
 
+    ctx.fillStyle = 'rgba(20,20,26,0.5)';         // Bremsspuren
+    for (const mk of G.marks) {
+      ctx.fillRect(mk.x - mk.len, GY - 0.3, mk.len, 1.3);
+      ctx.fillRect(mk.x - mk.len + mdl.wb, GY - 0.3, mk.len, 1.3);
+    }
     if (G.markLen) {                            // Reifenspur
       ctx.fillStyle = '#1e1e24';
       ctx.fillRect(G.markX - G.markLen, GY - 0.6, G.markLen, 2);
@@ -1222,11 +1412,13 @@
     let x = menu ? W / 2 - mdl.wb / 2 - 1 : RX, y = GY - mdl.r;
     if (shx || shy) { x += shx; y += shy; }
     else if (G.burn && st === PLAY) x += floor(t * 30) & 1 ? 0.7 : 0;      // Burnout: der Scooter zittert
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.beginPath();
-    ctx.ellipse(x + mdl.wb / 2 * cos(min(G.th, 1.5)) + 1, GY + 0.8, mdl.wb / 2 + mdl.r + 1 - 6 * sin(min(G.th, 1.5)), 1.5, 0, 0, 2 * PI);
-    ctx.fill();
-    const o = { model: mdl, col: G.body, rotF: G.rotF, rotR: G.rotR, dual: store.tune[store.scooter][DUAL] > 0 };
+    const lift = sin(min(G.th, 1.5));           // weicher Schatten, wird im Wheelie kürzer
+    glow(SPR.dark, x + mdl.wb / 2 * cos(min(G.th, 1.5)) + 1, GY + 1, mdl.wb / 2 + mdl.r + 3 - 7 * lift, 2.6, 0.55);
+    glow(SPR.dark, x, GY + 0.6, mdl.r + 1.5, 1.6, 0.5);
+    const dualOn = store.tune[store.scooter][DUAL] > 0, wspin = G.v * PX_PER_M / mdl.r;
+    const o = { model: mdl, col: G.body, rotF: G.rotF, rotR: G.rotR, dual: dualOn, light: true,
+      spinR: G.burn ? 45 : wspin, spinF: G.burn && dualOn ? 45 : wspin,
+      brake: (st === PLAY && (held & BTN_B) !== 0) || st === CRASH };
     if (st === CRASH) {
       const k = clamp((G.th - CRASH_RAD) / (1.745 - CRASH_RAD), 0, 1);
       o.th = G.th; o.pose = 0; o.arms = 2; o.swing = null; o.lean = LEAN + (1 - LEAN) * k;
@@ -1236,6 +1428,9 @@
       o.arms = G.arms; o.lean = LEAN;
       o.swing = G.th > 0 ? clamp(G.ph, -0.9, 1.3) : null;
       G.hy = body(o.th, o.pose, LEAN, mdl.dy).hip[1];
+      // Der Fahrer geht mit: beim Gasgeben nach vorn, beim Bremsen nach hinten und leicht in die Knie
+      o.tilt = clamp(-G.accS * 0.85, -9, 8) * (G.th > 0 ? 0.35 : 1);
+      if (G.th === 0 && G.b < 0.01) o.pose = max(o.pose, clamp(-G.accS * 0.07, 0, 0.55));
     }
     if (menu && !store.owned[store.scooter]) ctx.globalAlpha = 0.6;
     drawRider(x, y, o);
@@ -1244,13 +1439,13 @@
 
     // Fahrtwind-Streifen bei hohem Tempo
     const n = st === PLAY ? floor((G.v - 15.0) / 3.0) : 0;
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
     for (let k = 0; k < 4; k++) {
       const l = G.lines[k];
       if (k < n) {
         l.x -= 900 * dt * (st === PAUSE ? 0 : 1);
         if (l.x < -22) { l.x = W + randint(0, 50); l.y = randint(24, floor(GY) - 14); }
-        ctx.fillRect(l.x, l.y, 20, 0.8);
+        ctx.fillRect(l.x, l.y, 26, 0.45);
       } else {
         l.x = -99;
       }
@@ -1260,6 +1455,9 @@
       g.addColorStop(0, 'rgba(90,150,255,0.35)'); g.addColorStop(1, 'rgba(90,150,255,0)');
       ctx.fillStyle = g; ctx.fillRect(0, 0, W * 0.35, H);
     }
+    ctx.setTransform(SC, 0, 0, SC, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(lightCanvas, 0, 0);                           // Sonnenlicht und dunklere Ränder
     ctx.setTransform(SC, 0, 0, SC, 0, 0);
 
     if (G.photo) return;                        // nur das Bild, ohne Anzeigen (für das App-Icon)
@@ -1337,8 +1535,9 @@
     }
     if (G.toastT > 0) { G.toastT -= dt; if (G.toastT <= 0) G.toast = ''; }
     const play_ = G.state === PLAY;
-    engineSound(G.state !== PAUSE ? G.v / car.vmax : 0.0, play_ && (held & BTN_A) !== 0,
-      play_ ? (G.boost ? 2 : (G.burn ? 1 : 0)) : 0);
+    engineSound(G.state !== PAUSE ? G.v : 0.0, play_ && (held & BTN_A) !== 0,
+      play_ ? (G.boost ? 2 : (G.burn ? 1 : 0)) : 0, play_ ? G.skid : 0,
+      G.scrape && G.state !== PAUSE && G.state !== MENU, store.tune[store.scooter][DUAL] > 0);
     draw(dt);
     taps = [];
   }
@@ -1355,7 +1554,7 @@
       setPause(true);
       keys = 0; pointers.clear();
       saveStore();
-      if (ac) { try { engGain.gain.value = 0; ac.suspend(); } catch (e) { /* egal */ } }
+      if (ac) { try { ac.suspend(); } catch (e) { /* egal */ } }
     } else {
       last = 0;
     }
