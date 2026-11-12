@@ -46,21 +46,22 @@
   // accel = Beschleunigung beim Anfahren (m/s², das Original hat 6.0),
   // dual = hat schon ab Werk zwei Motoren, price = Preis in Münzen,
   // label = Schriftzug auf dem Scooter, tail / lamp = dort sitzen Rücklicht und Scheinwerfer,
+  // bot = Unterkante vom Trittbrett (dort leuchtet die LED),
   // gain = km/h pro Motor-Stufe, cost = Tuning-Teile sind so viel mal teurer,
   // id = feste Kennung (damit Käufe und Tuning auch nach dem Umsortieren richtig bleiben)
   const SCOOTERS = [
     { id: 'g3', name: 'NINEBOT MAX G3', kmh: 80, accel: 6.0, dual: false, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 4,
-      label: 'MAX G3', tail: [-5.9, 2.9], lamp: [22.9, 21.2] },
+      label: 'MAX G3', bot: -2.6, tail: [-5.9, 2.9], lamp: [22.9, 21.2] },
     { id: 'g4', name: 'KUKIRIN G4', kmh: 105, accel: 7.5, dual: false, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 12,
-      label: 'KUKIRIN G4', tail: [-3.8, 7.2], lamp: [24.9, 23.8] },
+      label: 'KUKIRIN G4', bot: -2.0, tail: [-3.8, 7.2], lamp: [24.9, 23.8] },
     { id: 'gt2', name: 'SEGWAY GT2', kmh: 112, accel: 9.0, dual: true, price: 650, gain: 10, cost: 2, r: 5.4, wb: 28, dy: 0.7, color: 13,
-      label: 'GT2', tail: [-5.6, 3.4], lamp: [22.6, 20.6] },
+      label: 'GT2', bot: -2.9, tail: [-5.6, 3.4], lamp: [22.6, 20.6] },
     { id: 'ww', name: 'KAABO WOLF WARRIOR 11', kmh: 118, accel: 9.5, dual: true, price: 950, gain: 11, cost: 2.2, r: 6.0, wb: 29, dy: 1.2, color: 4,
-      label: 'KAABO', tail: [-6.3, 4.6], lamp: [27.0, 12.4] },
+      label: 'KAABO', bot: -3.2, tail: [-6.3, 4.6], lamp: [27.0, 12.4] },
     { id: 'dx', name: 'DUALTRON X LIMITED', kmh: 125, accel: 10.5, dual: true, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 11,
-      label: 'DUALTRON', tail: [-2.9, 7.9], lamp: [26.9, 13.7] },
+      label: 'DUALTRON', bot: -4.0, tail: [-2.9, 7.9], lamp: [26.9, 13.7] },
     { id: 'nami', name: 'NAMI BURN-E 2 MAX', kmh: 140, accel: 11.5, dual: true, price: 2000, gain: 13, cost: 3, r: 6.0, wb: 29, dy: 1.8, color: 4,
-      label: 'NAMI BURN-E 2', tail: [-5.0, 5.0], lamp: [25.9, 12.4] },
+      label: 'NAMI BURN-E 2', bot: -3.6, tail: [-5.0, 5.0], lamp: [25.9, 12.4] },
   ];
   const PARTS = [
     { name: 'MOTOR', info: g => '+' + g + ' KM/H' },
@@ -82,6 +83,36 @@
     ['SCHWARZ', 0x3A3A46], ['GOLD', 0xFFC83D], ['REGENBOGEN', -1], ['NEON-GRÜN', 0x9DFF3A],
     ['LILA', 0x9B5DE5], ['ORANGE', 0xFF8A1F], ['WEISS', 0xF2F2F6], ['EIS-BLAU', 0x8FE8FF],
     ['GRAU', 0x7C838F], ['TITAN', 0xA39A88]];
+
+  // ------------------------------------------------------------------
+  // CUSTOM: Fahrer und Scooter selbst gestalten (alles gratis)
+  // ------------------------------------------------------------------
+  // Farbwerte: -1 = Regenbogen, -2 = Sonderfall (Serie, aus, wie Scooter), -3 = keine Farbe (nur Name)
+  const CLOTH = [['ROT', 0xE84A3C], ['JEANS', 0x33509A], ['SCHWARZ', 0x2B2C34], ['WEISS', 0xF2F2F6],
+    ['GRAU', 0x7C838F], ['BLAU', 0x2F7DE1], ['GRÜN', 0x3CCB5A], ['GELB', 0xFFD23F], ['ORANGE', 0xFF8A1F],
+    ['PINK', 0xFF5FA2], ['LILA', 0x9B5DE5], ['TÜRKIS', 0x19C2A0], ['BEIGE', 0xD8C3A0], ['BRAUN', 0x7A4E36],
+    ['OLIV', 0x6B7A3A]];
+  const SKINS = [['HELL', 0xF4C7A1], ['SEHR HELL', 0xFBE0C8], ['MITTEL', 0xD9A77A], ['BRAUN', 0xA8724A],
+    ['DUNKEL', 0x6E4A32]];
+  const HELMETS = [['OFFEN', -3], ['INTEGRAL', -3], ['MOTOCROSS', -3]];
+  const HCOLS = [['WIE SCOOTER', -2]].concat(COLORS);
+  const VISORS = [['DUNKEL', 0x20232C], ['GOLD', 0xE8B53A], ['BLAU', 0x3A7BD5], ['ROT', 0xD8262C], ['KLAR', 0x9FC0E4]];
+  const PATTERNS = [['STREIFEN', -3], ['UNI', -3], ['DOPPEL', -3], ['RENNSTREIFEN', -3]];
+  const RIMS = [['SILBER', 0xAEB4BD], ['SCHWARZ', 0x3A3B44], ['GOLD', 0xE8B53A], ['ROT', 0xD8262C],
+    ['BLAU', 0x2F7DE1], ['WIE SCOOTER', -2]];
+  const CALIPERS = [['SERIE', -2], ['ROT', 0xD8262C], ['GOLD', 0xE8B53A], ['BLAU', 0x2F7DE1], ['GRÜN', 0x3CCB5A],
+    ['SCHWARZ', 0x2B2C34]];
+  const LEDS = [['AUS', -2], ['BLAU', 0x3F8CFF], ['ROT', 0xFF3040], ['GRÜN', 0x3CFF6A], ['LILA', 0xB060FF],
+    ['PINK', 0xFF5FC8], ['WEISS', 0xF0F4FF], ['REGENBOGEN', -1]];
+  const SMOKES = [['WEISS', -2], ['SCHWARZ', 0x3A3A44], ['ROT', 0xFF4040], ['BLAU', 0x4A90FF], ['GRÜN', 0x4ADC6A],
+    ['LILA', 0xB070FF], ['PINK', 0xFF70C0], ['GELB', 0xFFD83F], ['REGENBOGEN', -1]];
+  // Zeilen im CUSTOM-Fenster: [Name, Liste, Schlüssel]. Fahrer gilt für alle Scooter,
+  // Scooter-Teile hat jeder Scooter einzeln (Schlüssel = Platz in store.mods, -1 = Farbe).
+  const LOOK_ROWS = [['HELM', HELMETS, 'helmet'], ['HELM-FARBE', HCOLS, 'hcol'], ['VISIER', VISORS, 'visor'],
+    ['JACKE', CLOTH, 'shirt'], ['MUSTER', PATTERNS, 'pattern'], ['HOSE', CLOTH, 'pants'], ['SCHUHE', CLOTH, 'shoes'],
+    ['HAUT', SKINS, 'skin']];
+  const MOD_ROWS = [['FARBE', COLORS, -1], ['FELGEN', RIMS, 0], ['BREMSSÄTTEL', CALIPERS, 1], ['LED UNTEN', LEDS, 2],
+    ['RAUCH', SMOKES, 3]];
 
   // ------------------------------------------------------------------
   // Feste Werte
@@ -135,7 +166,10 @@
     owned: SCOOTERS.map(s => s.price === 0),
     color: SCOOTERS.map(s => s.color),
     tune: SCOOTERS.map(() => PARTS.map(() => 0)),
+    look: { helmet: 0, hcol: 0, visor: 0, shirt: 0, pattern: 0, pants: 1, shoes: 3, skin: 0 },
+    mods: SCOOTERS.map(() => MOD_ROWS.filter(r => r[2] >= 0).map(() => 0)),   // Felgen, Bremssättel, LED, Rauch
   };
+  const okIndex = (v, list) => Number.isInteger(v) && v >= 0 && v < list.length;
   try {
     const d = JSON.parse(localStorage.getItem(KEY) || '{}');
     if (d.best >= 0) store.best = +d.best;
@@ -155,7 +189,12 @@
         const v = d.tune && d.tune[j] && d.tune[j][k];
         if (v >= 0 && v <= levels(k)) store.tune[i][k] = floor(v);
       });
+      MOD_ROWS.forEach(([, list, k]) => {
+        const v = k >= 0 && d.mods && d.mods[j] && d.mods[j][k];
+        if (okIndex(v, list)) store.mods[i][k] = v;
+      });
     });
+    if (d.look) for (const [, list, key] of LOOK_ROWS) if (okIndex(d.look[key], list)) store.look[key] = d.look[key];
   } catch (e) { /* kein Speicher: dann eben ohne */ }
   SCOOTERS.forEach((s, i) => { if (s.dual) store.tune[i][DUAL] = 1; });   // ab Werk eingebaut
   const m = /[?&]coins=(\d+)/.exec(location.search);      // zum Testen: ?coins=5000
@@ -471,6 +510,19 @@
   }
   const SPR = { smoke: glowSprite(236, 236, 240, 0.5), grey: glowSprite(170, 170, 180, 0.5), dust: glowSprite(196, 180, 150),
     dark: glowSprite(0, 0, 0, 0.45), red: glowSprite(255, 40, 30), warm: glowSprite(255, 240, 180), fire: glowSprite(255, 140, 40) };
+  const tinted = new Map();
+  function tintSprite(rgb, hard) {
+    // weicher Fleck in einer beliebigen Farbe (für LED und farbigen Rauch), wird gemerkt
+    const key = rgb + '/' + (hard || 0);
+    if (!tinted.has(key)) tinted.set(key, glowSprite((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, hard));
+    return tinted.get(key);
+  }
+  function smokeSprite() {
+    // Rauchfarbe vom Scooter (null = normaler weißer Rauch)
+    const c = SMOKES[store.mods[store.scooter][3]][1];
+    if (c === -2) return null;
+    return tintSprite(c === -1 ? rainbow(floor(random() * 24) / 24) : c, 0.5);
+  }
   function glow(spr, x, y, rx, ry, alpha) {
     ctx.globalAlpha = alpha;
     ctx.drawImage(spr, x - rx, y - (ry || rx), rx * 2, (ry || rx) * 2);
@@ -539,9 +591,10 @@
     }
     const ri = r * (kind === 2 ? 0.46 : 0.56), fast = clamp((Math.abs(spin || 0) - 18) / 30, 0, 1);
     if (kind === 2) circ(p, ri + 0.7, col);
-    circ(p, ri, '#8d939d');
-    circ(p, ri - 0.5, '#aeb4bd');
-    ctx.strokeStyle = '#555b66'; ctx.lineWidth = 0.75;         // Speichen (verwischen bei hohem Tempo)
+    circ(p, ri, RIM_C === null ? '#8d939d' : shade(RIM_C, -0.25));
+    circ(p, ri - 0.5, RIM_C === null ? '#aeb4bd' : hex(RIM_C));
+    ctx.strokeStyle = RIM_C === null ? '#555b66' : shade(RIM_C, -0.55);
+    ctx.lineWidth = 0.75;                                      // Speichen (verwischen bei hohem Tempo)
     ctx.globalAlpha = 1 - 0.75 * fast;
     ctx.beginPath();
     for (let k = 0; k < 3; k++) {
@@ -568,7 +621,7 @@
     else circ(p, r * 0.2, '#17171c');
     const a = rad(135) + (th || 0);                            // Bremssattel (dreht sich nicht mit)
     const q = [p[0] + cos(a) * rd, p[1] - sin(a) * rd];
-    seg([q[0] - sin(a) * 0.7, q[1] - cos(a) * 0.7], [q[0] + sin(a) * 0.7, q[1] + cos(a) * 0.7], r * 0.26, cal || '#c4282a');
+    seg([q[0] - sin(a) * 0.7, q[1] - cos(a) * 0.7], [q[0] + sin(a) * 0.7, q[1] + cos(a) * 0.7], r * 0.26, CAL_C || cal || '#c4282a');
     ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 0.6; ctx.lineCap = 'butt';     // Glanz auf dem Reifen
     ctx.beginPath(); ctx.arc(p[0], p[1], r - 0.8, -2.4, -1.2); ctx.stroke();
   }
@@ -857,8 +910,30 @@
     }
   }
 
-  const SKIN = '#f4c7a1', SKIN_D = '#d79f7a', SHIRT = '#e84a3c', SHIRT_D = '#b8372d';
-  const LEG_F = '#33509a', LEG_B = '#25356e', SHOE = '#ededf2';
+  // Farben vom Fahrer: kommen aus CUSTOM (applyLook), gezeichnet wird immer nur ein Fahrer
+  let SKIN = '#f4c7a1', SKIN_D = '#d79f7a', SHIRT = '#e84a3c', SHIRT_D = '#b8372d';
+  let LEG_F = '#33509a', LEG_B = '#25356e', SHOE = '#ededf2', STRIPE = '#ffffff';
+  let HELMET_T = 0, HELMET_C = 0x19C2A0, VISOR = '#20232c', PATTERN = 0;
+  let RIM_C = null, CAL_C = null;           // Felgen und Bremssättel (null = Serie)
+  function pick(list, i, t) {
+    // Farbe aus einer CUSTOM-Liste: Regenbogen läuft, "wie Scooter" nimmt die Scooter-Farbe
+    const c = list[i][1];
+    return c === -1 ? rainbow(t * 0.4) : c === -2 ? G.body : c;
+  }
+  function applyLook(t) {
+    const L = store.look, sk = SKINS[L.skin][1], sh = CLOTH[L.shirt][1], pa = CLOTH[L.pants][1];
+    SKIN = hex(sk); SKIN_D = shade(sk, -0.13);
+    SHIRT = hex(sh); SHIRT_D = shade(sh, -0.22);
+    STRIPE = L.shirt === 3 ? '#2b2c34' : '#ffffff';
+    LEG_F = hex(pa); LEG_B = shade(pa, -0.28);
+    SHOE = hex(CLOTH[L.shoes][1]);
+    HELMET_T = L.helmet; PATTERN = L.pattern;
+    HELMET_C = pick(HCOLS, L.hcol, t);
+    VISOR = hex(VISORS[L.visor][1]);
+    const md = store.mods[store.scooter];
+    RIM_C = md[0] === 0 ? null : pick(RIMS, md[0], t);
+    CAL_C = md[1] === 0 ? null : hex(CALIPERS[md[1]][1]);
+  }
 
   function drawLeg(g, model, front) {
     const S = g.S, ax = front ? 14.5 : 5.5, c = front ? LEG_F : LEG_B, dy = model.dy;
@@ -884,22 +959,43 @@
     const P = (al, fr) => [hip[0] + ux * al + fx * (fr || 0), hip[1] + uy * al + fy * (fr || 0)];
     seg(P(0.6), P(TORSO - 0.6), 5.6, SHIRT);                    // Shirt
     seg(P(0.6, -2.0), P(TORSO - 0.8, -2.0), 1.5, SHIRT_D);      // Schatten am Rücken
-    seg(P(3.2, 0.9), P(TORSO - 2.6, 0.9), 0.9, '#ffffff');      // Streifen
+    if (PATTERN === 0) seg(P(3.2, 0.9), P(TORSO - 2.6, 0.9), 0.9, STRIPE);       // Muster: ein Streifen
+    else if (PATTERN === 2) {                                                     // zwei Streifen
+      seg(P(3.2, 1.5), P(TORSO - 2.6, 1.5), 0.6, STRIPE);
+      seg(P(3.2, 0.2), P(TORSO - 2.6, 0.2), 0.6, STRIPE);
+    } else if (PATTERN === 3) seg(P(5.6, -2.3), P(5.6, 2.3), 1.7, hex(col));    // Rennstreifen in Helm-Farbe
     seg(P(TORSO + 0.2, 0.3), P(TORSO + 2.4, 0.5), 2.4, SKIN_D);  // Hals
-    const head = P(16.1, 0.5);
+    const head = P(16.1, 0.5), hc = hex(col), hd = shade(col, -0.3);
     circ(head, 3.7, SKIN);
-    ctx.fillStyle = hex(col);                                   // Helm: von der Stirn bis in den Nacken
-    ctx.beginPath();
-    for (let k = -1; k < 12; k++) {
-      const w = rad(8 + k * 17) - a;
-      const x = head[0] + 4.5 * cos(w), y = head[1] - 4.5 * sin(w) - 0.2;
-      if (k < 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    if (HELMET_T === 0) {                                       // offener Helm: von der Stirn bis in den Nacken
+      ctx.fillStyle = hc;
+      ctx.beginPath();
+      for (let k = -1; k < 12; k++) {
+        const w = rad(8 + k * 17) - a;
+        const x = head[0] + 4.5 * cos(w), y = head[1] - 4.5 * sin(w) - 0.2;
+        if (k < 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath(); ctx.fill();
+      seg(P(17.6, 2.0), P(19.3, 0.4), 1.0, 'rgba(255,255,255,0.75)');     // Glanzlicht
+      seg(P(16.7, 2.6), P(16.3, 5.9), 1.3, '#20202a');          // Schirm
+      circ(P(15.0, 3.0), 0.55, '#20202a');                      // Auge
+      seg(P(13.4, -2.6), P(13.0, 0.4), 0.6, '#20202a');         // Kinnriemen
+    } else {                                                    // Integral- oder Motocross-Helm: ganzer Kopf
+      circ(head, 4.7, hc);
+      poly([P(14.0, 0.8), P(12.4, 2.4), P(12.0, 4.4), P(13.6, 5.0), P(15.2, 4.4)], hc);   // Kinnteil
+      seg(P(12.5, 1.6), P(12.2, 4.0), 0.5, hd);
+      if (HELMET_T === 1) {
+        seg(P(16.9, 3.3), P(15.0, 3.7), 2.3, VISOR);           // Visier
+        seg(P(17.4, 4.0), P(16.9, 4.6), 0.5, 'rgba(255,255,255,0.55)');
+      } else {
+        poly([P(12.4, 2.6), P(10.9, 6.4), P(12.2, 6.8), P(14.0, 4.8)], hc);           // Kinnbügel nach vorn
+        seg(P(16.6, -4.2), P(16.6, 2.6), 0.9, '#20202a');      // Brillenband
+        seg(P(16.9, 2.8), P(15.6, 4.9), 2.0, VISOR);           // Brille
+        seg(P(17.1, 3.8), P(16.6, 4.6), 0.45, 'rgba(255,255,255,0.6)');
+        poly([P(19.4, 0.4), P(19.6, 7.0), P(18.6, 7.2), P(18.2, 2.4)], hd);           // Schirm oben
+      }
+      seg(P(18.4, -1.6), P(20.2, 0.2), 0.9, 'rgba(255,255,255,0.6)');      // Glanzlicht
     }
-    ctx.closePath(); ctx.fill();
-    seg(P(17.6, 2.0), P(19.3, 0.4), 1.0, 'rgba(255,255,255,0.75)');       // Glanzlicht
-    seg(P(16.7, 2.6), P(16.3, 5.9), 1.3, '#20202a');            // Schirm
-    circ(P(15.0, 3.0), 0.55, '#20202a');                        // Auge
-    seg(P(13.4, -2.6), P(13.0, 0.4), 0.6, '#20202a');           // Kinnriemen
     return P(TORSO);
   }
 
@@ -939,6 +1035,13 @@
       ctx.restore();
     }
     drawScooter(model, g.S, o.th, o.col, o.rotF, o.rotR, o.dual, o.spinF, o.spinR);
+    if (o.led !== null && o.led !== undefined) {                 // LED unter dem Trittbrett
+      const la = g.S(4.5, model.bot), lb = g.S(19.5, model.bot);
+      ctx.globalCompositeOperation = 'lighter';
+      glow(tintSprite(o.led), (la[0] + lb[0]) / 2, (la[1] + lb[1]) / 2, 10, 2.4, 0.7);
+      ctx.globalCompositeOperation = 'source-over';
+      seg(la, lb, 0.6, hex(o.led));
+    }
     if (o.light) {
       glow(SPR.warm, lamp[0], lamp[1], 4.2, 0, 0.75);
       glow(SPR.red, tail[0], tail[1], o.brake ? 6.5 : 2.6, 0, o.brake ? 0.95 : 0.5);    // Bremslicht
@@ -947,7 +1050,7 @@
     drawLeg(g, model, false);
     if (o.swing !== null) drawSwing(g.hip, o.swing); else drawLeg(g, model, true);
     const psi = g.psi + (o.tilt || 0);
-    const sh = drawTorso(g.hip, psi, o.col);
+    const sh = drawTorso(g.hip, psi, HELMET_C);
     circ(g.hip, 2.2, LEG_F);
     const phi = o.th * 180 / PI * o.lean;
     if (o.arms === 2) drawUpArm(sh, phi, 1);
@@ -1102,7 +1205,8 @@
   // kind: 0 Rauch, 1 Staub, 2 Bremsrauch, 3 Flamme, 4 Funke
   const puffs = [];
   function emitPuff(x, y, vx, vy, life, kind) {
-    if (puffs.length < 220) puffs.push({ x, y, vx, vy, age: 0, life, kind, s: 0.8 + random() * 0.5 });
+    if (puffs.length < 220)
+      puffs.push({ x, y, vx, vy, age: 0, life, kind, s: 0.8 + random() * 0.5, spr: kind === 0 ? smokeSprite() : null });
   }
   function sparks(x, y, n, speed) {
     for (let i = 0; i < n; i++)
@@ -1143,7 +1247,7 @@
       } else {                                                  // Rauch und Staub: weich, wird größer und dünner
         const r = (kind === 0 ? 3.4 + 8.5 * f : 2.2 + 5.5 * f) * p.s;
         const a = (kind === 0 ? 0.8 : kind === 1 ? 0.5 : 0.34) * (1 - f) * min(1, p.age * 12);
-        glow(kind === 1 ? SPR.dust : f > 0.5 || kind === 2 ? SPR.grey : SPR.smoke, p.x, p.y, r, 0, a);
+        glow(kind === 1 ? SPR.dust : p.spr || (f > 0.5 || kind === 2 ? SPR.grey : SPR.smoke), p.x, p.y, r, 0, a);
       }
     }
   }
@@ -1158,6 +1262,7 @@
     markX: -99, markLen: 0, emit: 0, big: '', sub: '', msg: '', toast: '', toastT: 0, recordT: 0,
     rotF: 0, rotR: 0, hy: -18, tuning: false, lines: [0, 1, 2, 3].map(() => ({ x: -99, y: 0 })),
     body: 0x19C2A0, fps: 0, frames: 0, fpsT: 0,
+    custom: false, ctab: 0, crow: 0, cfx: 0,          // CUSTOM-Fenster: offen, Reiter, Zeile, Rauch-Vorschau
     marks: [], skid: 0, accS: 0, scrape: false,       // Bremsspuren, rutschende Reifen, Beschleunigung (geglättet)
     ps: 0, po: 0, smode: false, slanding: false,      // Stoppie: Winkel (rad), Drehgeschwindigkeit, an, sanft landen
     inStoppie: false, sd: 0, st: 0, crashFwd: false,  // ... Strecke (m), Zeit (s), Sturz nach vorn
@@ -1180,7 +1285,7 @@
     G.inStoppie = false; G.sd = 0; G.st = 0; G.crashFwd = false;
     for (const l of G.lines) l.x = -99;
   }
-  function gotoMenu() { G.state = MENU; G.tuning = false; resetRide(); }
+  function gotoMenu() { G.state = MENU; G.tuning = false; G.custom = false; resetRide(); }
   function toast(s) { G.toast = s; G.toastT = 1.8; }
   function startGame() {
     saveStore();
@@ -1580,9 +1685,64 @@
     return hit;
   }
 
+  function customLayout() {
+    // links das Fenster mit den Einstellungen, rechts die Vorschau
+    const px = IL + 4, pw = clamp(W - IL - IR - 112, 100, 136), area = W - IR - (px + pw);
+    const zoom = area >= 110 ? 1.45 : area >= 80 ? 1.2 : 1.0;   // Vorschau so groß, wie Platz ist
+    return { px, py: 3, pw, ph: H - 6, pcx: (px + pw + W - IR) / 2, area, zoom };
+  }
+  function changeCustom(row, dir) {
+    const [, list, key] = row;
+    if (G.ctab === 0) store.look[key] = (store.look[key] + dir + list.length) % list.length;
+    else if (key < 0) { setColor(dir); return; }
+    else {
+      const m = store.mods[store.scooter];
+      m[key] = (m[key] + dir + list.length) % list.length;
+      if (key === 3) G.cfx = 1.3;               // neue Rauchfarbe gleich zeigen
+    }
+    play(SND_TICK);
+  }
+  function randomCustom() {
+    // ZUFALL: alles auf der offenen Seite neu würfeln
+    if (G.ctab === 0) for (const [, list, key] of LOOK_ROWS) store.look[key] = floor(random() * list.length);
+    else {
+      store.color[store.scooter] = floor(random() * COLORS.length);
+      const m = store.mods[store.scooter];
+      for (const [, list, key] of MOD_ROWS) if (key >= 0) m[key] = floor(random() * list.length);
+      G.cfx = 1.3;
+    }
+    play(SND_BUY);
+  }
+  function closeCustom() {
+    G.custom = false;
+    saveStore();
+    play(SND_TICK);
+  }
+
   function updateMenu(dt) {
     void dt;
     const i = store.scooter;
+    if (G.custom) {
+      const rows = G.ctab ? MOD_ROWS : LOOK_ROWS;
+      if (pressed & BTN_UP) G.crow = (G.crow + rows.length - 1) % rows.length;
+      if (pressed & BTN_DOWN) G.crow = (G.crow + 1) % rows.length;
+      if (pressed & BTN_LEFT) changeCustom(rows[G.crow], -1);
+      if (pressed & BTN_RIGHT) changeCustom(rows[G.crow], 1);
+      if (pressed & BTN_B) { G.ctab ^= 1; G.crow = 0; play(SND_TICK); }
+      if (pressed & BTN_START) closeCustom();
+      if (G.cfx > 0) {                          // Vorschau vom Rauch: kurzer Burnout
+        G.cfx -= dt;
+        G.rotR += dt * 45;
+        G.emit += dt * 22;
+        const L = customLayout(), m = model();
+        while (G.emit >= 1) {
+          G.emit -= 1;
+          emitPuff(L.pcx - m.wb * L.zoom / 2 + randint(-2, 2), GY - 2, -18 - random() * 40, -6 - random() * 16,
+            0.9 + random() * 0.9, 0);
+        }
+      }
+      return;
+    }
     if (G.tuning) {
       if (pressed & BTN_START) G.tuning = false;
       return;
@@ -1595,15 +1755,70 @@
     void i;
   }
 
+  function drawCustom() {
+    const { px, py, pw, ph, pcx, area } = customLayout(), i = store.scooter, mdl = SCOOTERS[i];
+    ctx.fillStyle = 'rgba(20,30,64,0.93)'; rrect(px, py, pw, ph, 4); ctx.fill();
+    ctx.strokeStyle = '#4c66b8'; ctx.lineWidth = 0.8; rrect(px, py, pw, ph, 4); ctx.stroke();
+    text('CUSTOM', px + 5, py + 4, 7, '#ffd23f', 0, '#8c3b2e');
+    const tw = (pw - 46) / 2;                   // zwei Reiter: Fahrer und Scooter
+    for (const [k, name] of [[0, 'FAHRER'], [1, 'SCOOTER']]) {
+      if (button(px + 42 + k * (tw + 1.5), py + 3, tw, 10, name, { size: 4.2, color: G.ctab === k ? '#8a4fd6' : '#33406e' })) {
+        if (G.ctab !== k) { G.ctab = k; G.crow = 0; play(SND_TICK); }
+      }
+    }
+    const rows = G.ctab ? MOD_ROWS : LOOK_ROWS, rh = min(12, (ph - 17) / rows.length);
+    const bL = px + 41, vx = bL + 10, vw = pw - 4 - 10 - 51, bR = px + pw - 4 - 9;
+    rows.forEach((row, r) => {
+      const [name, list, key] = row, y = py + 16 + r * rh, bh = rh - 2.4;
+      const idx = G.ctab === 0 ? store.look[key] : key < 0 ? store.color[i] : store.mods[i][key];
+      if (!usedTouch && r === G.crow) {         // mit Tastatur: ausgewählte Zeile
+        ctx.fillStyle = 'rgba(255,255,255,0.08)'; rrect(px + 2, y - 0.6, pw - 4, rh - 1, 2); ctx.fill();
+      }
+      text(name, px + 5, y + (bh - 3.8) / 2, 3.8, '#9fb4e8', 0, false);
+      if (button(bL, y, 9, bh, '<', { size: 5 })) changeCustom(row, -1);
+      if (button(bR, y, 9, bh, '>', { size: 5 })) changeCustom(row, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; rrect(vx, y, vw, bh, 2); ctx.fill();
+      if (tapped(vx, y, vw, bh)) changeCustom(row, 1);
+      const c = list[idx][1], sw = c !== -3 && vw >= 44;
+      if (sw) {                                 // kleines Farbmuster
+        const col = c === -1 ? rainbow(G.t * 0.4) : c === -2 ? (key === 'hcol' || key === 0 ? G.body : key === 3 ? 0xE6E6EA : -2) : c;
+        if (col === -2) { ctx.strokeStyle = '#9fb4e8'; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.arc(vx + 4, y + bh / 2, 2, 0, 2 * PI); ctx.stroke(); }
+        else {
+          circ([vx + 4, y + bh / 2], 2.1, hex(col));
+          ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 0.4;     // heller Rand: auch Schwarz sieht man
+          ctx.beginPath(); ctx.arc(vx + 4, y + bh / 2, 2.1, 0, 2 * PI); ctx.stroke();
+        }
+      }
+      text(list[idx][0], vx + (sw ? 7.5 : 0) + (vw - (sw ? 7.5 : 0)) / 2, y + (bh - 4.2) / 2, 4.2, '#ffffff', 1, false);
+    });
+    // rechts über der Vorschau: Name; unten: ZUFALL und FERTIG
+    const title = G.ctab ? mdl.name : 'DEIN FAHRER', fit = (str, size) => min(size, size * (area - 6) / textWidth(str, size));
+    text(title, pcx, 6, fit(title, 5.4), '#ffffff', 1);
+    if (G.ctab === 0) text('GILT FÜR ALLE SCOOTER', pcx, 13, fit('GILT FÜR ALLE SCOOTER', 3.6), 'rgba(255,255,255,0.85)', 1);
+    if (area >= 84) {                           // nebeneinander ...
+      if (button(pcx - 39, H - 17, 37, 13, 'ZUFALL', { size: 5.6, color: '#d08a1f' })) randomCustom();
+      if (button(pcx + 2, H - 17, 37, 13, 'FERTIG', { size: 5.6, color: '#2e9e48' })) closeCustom();
+    } else {                                    // ... oder übereinander, wenn wenig Platz ist
+      const bw = area - 6, bx = pcx - bw / 2;
+      if (button(bx, H - 30, bw, 12, 'ZUFALL', { size: 5, color: '#d08a1f' })) randomCustom();
+      if (button(bx, H - 16, bw, 12, 'FERTIG', { size: 5, color: '#2e9e48' })) closeCustom();
+    }
+  }
+
   function drawMenu() {
+    if (G.custom) { drawCustom(); return; }
     const i = store.scooter, mdl = SCOOTERS[i], owned = store.owned[i], inert = G.tuning;
     const cx = W / 2;
     // Titel und Rekorde
     text('E-SCOOTER', IL + 6, 4, 5.5, '#ffffff', 0);
     text('WHEELIE', IL + 6, 10, 13, '#ffd23f', 0, '#8c3b2e');
-    text('REKORD ' + store.best.toFixed(1) + ' M', IL + 6, 27, 4.2, '#ffffff', 0);
-    text('STOPPIE-REKORD ' + store.sbest.toFixed(1) + ' M', IL + 6, 32.5, 4.2, '#ffffff', 0);
-    if (store.tbest) text('TRICK-REKORD ' + store.tbest, IL + 6, 38, 4.2, '#ffffff', 0);
+    const recs = ['REKORD ' + store.best.toFixed(1) + ' M', 'STOPPIE-REKORD ' + store.sbest.toFixed(1) + ' M'];
+    if (store.tbest) recs.push('TRICK-REKORD ' + store.tbest);
+    let recRight = IL + 6;
+    recs.forEach((r, k) => {
+      text(r, IL + 6, 27 + k * 5.5, 4.2, '#ffffff', 0);
+      recRight = max(recRight, IL + 6 + textWidth(r, 4.2));
+    });
     // Münzen und Ton
     coins(store.coins, W - IR - 21, 6, 6.5, 2);
     if (button(W - IR - 17, 3, 13, 13, store.sound ? 'TON' : 'AUS', { inert, size: 4.2, color: store.sound ? '#2f4a8f' : '#6a3340' })) {
@@ -1614,11 +1829,18 @@
     }
     // Scooter-Name
     const ny = max(4, GY - 88);
-    const nw = max(64, textWidth(mdl.name, 7) + 10);
-    ctx.fillStyle = 'rgba(16,24,58,0.72)'; rrect(cx - nw / 2, ny + 15, nw, 17, 3); ctx.fill();
-    text(mdl.name, cx, ny + 17, 7, '#ffffff', 1);
-    if (owned) text('TOP ' + topSpeed(i) + ' KM/H', cx, ny + 25.5, 4.4, '#ffe27a', 1);
-    else coins(mdl.price, cx, ny + 25.5, 4.6, 1, '#ffe27a');
+    let ns = 7, nw = max(64, textWidth(mdl.name, ns) + 10);
+    let nx = cx - nw / 2;                       // auf schmalen Bildschirmen neben die Rekorde schieben ...
+    if (nx < recRight + 3) {
+      const room = W - IR - 4 - (recRight + 3);
+      if (nw > room) { ns = 7 * (room - 10) / (nw - 10); nw = room; }      // ... und wenn nötig kleiner schreiben
+      nx = min(recRight + 3, W - IR - 4 - nw);
+    }
+    const ncx = nx + nw / 2;
+    ctx.fillStyle = 'rgba(16,24,58,0.72)'; rrect(nx, ny + 15, nw, 17, 3); ctx.fill();
+    text(mdl.name, ncx, ny + 17 + (7 - ns) / 2, ns, '#ffffff', 1);
+    if (owned) text('TOP ' + topSpeed(i) + ' KM/H', ncx, ny + 25.5, 4.4, '#ffe27a', 1);
+    else coins(mdl.price, ncx, ny + 25.5, 4.6, 1, '#ffe27a');
     // Pfeile links und rechts vom Scooter
     if (button(cx - 56, GY - 32, 14, 20, '<', { inert, size: 8 })) setScooter(-1);
     if (button(cx + 42, GY - 32, 14, 20, '>', { inert, size: 8 })) setScooter(1);
@@ -1627,13 +1849,20 @@
     // unten: Farbe, Tuning, Start
     const by = H - 17, bh = 13;
     const sw = 40 + clamp((W - 160) * 0.3, 0, 24), sx = W - IR - 6 - sw, fx = IL + 6;
-    if (button(fx, by, 11, bh, '<', { inert })) setColor(-1);
-    ctx.fillStyle = 'rgba(16,24,58,0.72)'; rrect(fx + 12.5, by, 43, bh, 3); ctx.fill();
-    text('FARBE', fx + 34, by + 1.3, 3.4, '#9fb4e8', 1, false);
-    text(COLORS[store.color[i]][0], fx + 34, by + 5.6, 4.6, hex(G.body), 1);
-    if (button(fx + 57, by, 11, bh, '>', { inert })) setColor(1);
-    const tx = (fx + 68 + sx) / 2 - 18;
-    if (button(tx, by, 36, bh, 'TUNING', { inert, off: !owned, color: '#8a4fd6', size: 5.6 })) {
+    const farbe = fx + 71 + 74 <= sx;           // schnelle Farbwahl, wenn Platz ist (sonst in CUSTOM)
+    if (farbe) {
+      if (button(fx, by, 11, bh, '<', { inert })) setColor(-1);
+      ctx.fillStyle = 'rgba(16,24,58,0.72)'; rrect(fx + 12.5, by, 43, bh, 3); ctx.fill();
+      text('FARBE', fx + 34, by + 1.3, 3.4, '#9fb4e8', 1, false);
+      text(COLORS[store.color[i]][0], fx + 34, by + 5.6, 4.6, hex(G.body), 1);
+      if (button(fx + 57, by, 11, bh, '>', { inert })) setColor(1);
+    }
+    const bx0 = farbe ? fx + 71 : fx, cxb = (bx0 + sx - 3) / 2;
+    if (button(cxb - 35.5, by, 34, bh, 'CUSTOM', { inert, color: '#1f9e9a', size: 5.6 })) {
+      G.custom = true; G.ctab = 0; G.crow = 0; play(SND_TICK);
+    }
+    const tx = cxb + 1.5;
+    if (button(tx, by, 34, bh, 'TUNING', { inert, off: !owned, color: '#8a4fd6', size: 5.6 })) {
       if (owned) { G.tuning = true; play(SND_TICK); } else toast('ERST KAUFEN');
     }
     if (owned) {
@@ -1746,7 +1975,14 @@
         ctx.fillRect(G.markX - G.markLen + mdl.wb, GY - 0.6, G.markLen, 2);
     }
     // Scooter und Fahrer
-    let x = menu ? W / 2 - mdl.wb / 2 - 1 : RX, y = GY - mdl.r;
+    const cl = menu && G.custom ? customLayout() : null, custom = cl !== null;
+    const pcx = custom ? cl.pcx : 0, zoom = custom ? cl.zoom : 1;
+    let x = custom ? pcx - mdl.wb / 2 : menu ? W / 2 - mdl.wb / 2 - 1 : RX, y = GY - mdl.r;
+    if (zoom !== 1) {                           // CUSTOM: der Scooter steht größer in der Vorschau
+      ctx.save();
+      ctx.translate(pcx, GY); ctx.scale(zoom, zoom); ctx.translate(-pcx, -GY);
+    }
+    applyLook(t);
     if (G.ps > 0) {                             // Stoppie: die Vorderachse bleibt am Boden, das Heck geht hoch
       x += mdl.wb * (1 - cos(G.ps));
       y -= mdl.wb * sin(G.ps);
@@ -1756,8 +1992,14 @@
     const ang = min(max(G.th, G.ps), 1.5), lift = sin(ang);    // weicher Schatten, wird im Wheelie kürzer
     glow(SPR.dark, x + mdl.wb / 2 * cos(ang) + 1, GY + 1, mdl.wb / 2 + mdl.r + 3 - 7 * lift, 2.6, 0.55);
     glow(SPR.dark, G.ps > 0 ? x + mdl.wb * cos(ang) : x, GY + 0.6, mdl.r + 1.5, 1.6, 0.5);
+    const ledI = store.mods[store.scooter][2], led = ledI ? pick(LEDS, ledI, t * 1.5) : null;
+    if (led !== null && lift < 0.9) {           // LED leuchtet auf die Straße
+      ctx.globalCompositeOperation = 'lighter';
+      glow(tintSprite(led), x + mdl.wb / 2 * cos(ang) + 1, GY + 0.8, mdl.wb / 2 + 8 - 8 * lift, 3.6, 0.8 * (1 - lift));
+      ctx.globalCompositeOperation = 'source-over';
+    }
     const dualOn = store.tune[store.scooter][DUAL] > 0, wspin = G.v * PX_PER_M / mdl.r;
-    const o = { model: mdl, col: G.body, rotF: G.rotF, rotR: G.rotR, dual: dualOn, light: true,
+    const o = { model: mdl, col: G.body, rotF: G.rotF, rotR: G.rotR, dual: dualOn, light: true, led,
       spinR: G.burn ? 45 : wspin, spinF: G.burn && dualOn ? 45 : wspin,
       brake: (st === PLAY && (held & BTN_B) !== 0) || st === CRASH };
     if (st === CRASH && G.crashFwd) {          // Sturz nach vorn: über den Lenker
@@ -1781,9 +2023,10 @@
       o.tilt = clamp(-G.accS * 0.85, -9, 8) * (G.th > 0 ? 0.35 : 1);
       if (G.th === 0 && G.b < 0.01) o.pose = max(o.pose, clamp(-G.accS * 0.07, 0, 0.55));
     }
-    if (menu && !store.owned[store.scooter]) ctx.globalAlpha = 0.6;
+    if (menu && !custom && !store.owned[store.scooter]) ctx.globalAlpha = 0.6;
     drawRider(x, y, o);
     ctx.globalAlpha = 1;
+    if (zoom !== 1) ctx.restore();
     drawPuffs();
 
     // Fahrtwind-Streifen bei hohem Tempo

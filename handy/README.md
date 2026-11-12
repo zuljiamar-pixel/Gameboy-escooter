@@ -5,9 +5,13 @@ Browser). Die Physik ist 1:1 aus [`code.py`](../code.py) übernommen (gleicher
 Wheelie, gleicher Burnout und Boost). Nur Tempo und Anzug hat jeder Scooter
 seine eigenen. Neu dazu kommt der **Stoppie**.
 
-| Menü | Tuning | Stoppie | Wheelie |
-|---|---|---|---|
-| ![Menü](store/screenshot-1-menue.png) | ![Tuning](store/screenshot-2-tuning.png) | ![Stoppie](store/screenshot-3-stoppie.png) | ![Wheelie](store/screenshot-4-wheelie.png) |
+| Menü | Custom | Tuning |
+|---|---|---|
+| ![Menü](store/screenshot-1-menue.png) | ![Custom](store/screenshot-5-custom.png) | ![Tuning](store/screenshot-2-tuning.png) |
+
+| Stoppie | Wheelie |
+|---|---|
+| ![Stoppie](store/screenshot-3-stoppie.png) | ![Wheelie](store/screenshot-4-wheelie.png) |
 
 ## Was ist neu?
 
@@ -50,9 +54,18 @@ seine eigenen. Neu dazu kommt der **Stoppie**.
   Der Segway mit langem flachem Trittbrett und großer Titan-Gussform vorn, der
   Kaabo mit Motorrad-Gabel bis zum Lenker, Doppel-Scheinwerfer und
   Gepäckträger, der NAMI mit Gitterrohr-Rahmen und langer Gabel.
-* **14 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
+* **CUSTOM** (Knopf im Menü, alles gratis): links stellst du ein, rechts siehst
+  du es gleich groß in der Vorschau. **ZUFALL** würfelt die ganze Seite neu.
+
+  | Seite | Was man einstellen kann |
+  |---|---|
+  | **Fahrer** (gilt für alle Scooter) | Helm (offen, Integral, Motocross), Helm-Farbe (oder wie der Scooter), Visier/Brille, Jacke, Muster (Streifen, uni, doppelt, Rennstreifen in Helm-Farbe), Hose, Schuhe, Hautfarbe |
+  | **Scooter** (jeder einzeln) | Farbe (14, auch Regenbogen), Felgen, Bremssättel, LED unter dem Trittbrett (leuchtet auch auf die Straße), Rauchfarbe beim Burnout (auch Regenbogen) |
+
   Am Anfang hat jeder Scooter seine echte Farbe (z.B. Ninebot schwarz, Kukirin
   grau, Segway titan, Dualtron schwarz mit eisblauen Details).
+  Mit der Tastatur: Pfeile hoch/runter = Zeile, links/rechts = ändern,
+  C = anderer Reiter, Enter = fertig.
 * **Bessere Grafik:** alles wird scharf in der Auflösung vom Handy gezeichnet,
   der Hintergrund bewegt sich in mehreren Ebenen (Wolken, Hochhäuser, Häuser,
   Gehweg, Straße), die Räder drehen sich.

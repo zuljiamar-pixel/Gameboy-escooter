@@ -66,6 +66,17 @@ const STORE = path.join(__dirname, '..', 'store');
   await pose({ wmode: true, th: 0.72, om: 0, v: 24, wd: 86.3, wt: 4.1, tp: 122, inWheelie: true, arms: 2, ph: 0.4 });
   await page.waitForTimeout(60);
   await page.screenshot({ path: path.join(STORE, 'screenshot-4-wheelie.png') });
+  // CUSTOM-Fenster mit eigenem Fahrer und Scooter
+  await page.evaluate(() => {
+    const g = window.__game, s = g.store;
+    s.scooter = 1;
+    Object.assign(s.look, { helmet: 2, hcol: 4, visor: 1, shirt: 2, pattern: 3, pants: 2, shoes: 3, skin: 2 });
+    s.mods[1] = [2, 3, 1, 5];
+    g.applyTuning();
+  });
+  await pose({ state: 0, custom: true, ctab: 0, inWheelie: false, wmode: false, th: 0, big: '', sub: '', toast: '', toastT: 0 });
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: path.join(STORE, 'screenshot-5-custom.png') });
   await browser.close();
   console.log('fertig:', OUT, STORE);
 })();
