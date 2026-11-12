@@ -31,7 +31,13 @@ Scooter seine eigene.
   | Dual-Motor (einmal) | +5 km/h und viel mehr Anzug (+2,5 m/s²). Beim Burnout rauchen dann beide Reifen. Der Dualtron hat ihn schon. |
 
   Voll getunt: Ninebot 118 km/h, Kukirin 152 km/h, Dualtron 179 km/h.
-* **12 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
+* **Scooter nach den echten Vorbildern gezeichnet** (nach Fotos): der Ninebot
+  schlank mit roten Federn und Bremssätteln, der Kukirin kantig mit breiter
+  schwarzer Lenkstange, Federbein vorn und orangen Details, der Dualtron mit
+  Akku-Kasten, dicker Lenksäule, rundem Scheinwerfer und liegenden Federbeinen.
+* **13 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
+  Am Anfang hat jeder Scooter seine echte Farbe (Ninebot schwarz, Kukirin grau,
+  Dualtron schwarz mit eisblauen Details).
 * **Bessere Grafik:** alles wird scharf in der Auflösung vom Handy gezeichnet,
   der Hintergrund bewegt sich in mehreren Ebenen (Wolken, Hochhäuser, Häuser,
   Gehweg, Straße), die Räder drehen sich.
@@ -85,9 +91,11 @@ Vor dem **ersten** Hochladen prüfen:
 
 * **App-Kennung** `ch.escooter.wheelie` (in `capacitor.config.json` und
   `android/app/build.gradle`). Sie lässt sich nach dem ersten Hochladen nie mehr ändern.
-* **Scooter-Namen:** „Ninebot", „Kukirin" und „Dualtron" sind geschützte Marken.
-  Google kann Apps ablehnen, die fremde Markennamen benutzen. Die Namen stehen
-  ganz oben in `www/game.js` bei `SCOOTERS` und sind in einer Minute geändert.
+* **Scooter-Namen:** „Ninebot", „Kukirin" und „Dualtron" sind geschützte Marken,
+  und die Scooter sehen den echten Modellen ähnlich. Google kann Apps ablehnen,
+  die fremde Markennamen benutzen. Die Namen (`name`) und die Schriftzüge auf
+  den Scootern (`label`) stehen ganz oben in `www/game.js` bei `SCOOTERS` und
+  sind in einer Minute geändert.
 * Für jedes Update `versionCode` in `android/app/build.gradle` um 1 erhöhen.
 
 ## Für Entwickler

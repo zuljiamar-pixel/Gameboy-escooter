@@ -33,15 +33,15 @@
   // name = so heißt der Scooter im Spiel, kmh = Höchstgeschwindigkeit ohne Tuning,
   // accel = Beschleunigung beim Anfahren (m/s², das Original hat 6.0),
   // dual = hat schon ab Werk zwei Motoren, price = Preis in Münzen,
-  // tail / lamp = dort sitzen Rücklicht und Scheinwerfer,
+  // label = Schriftzug auf dem Scooter, tail / lamp = dort sitzen Rücklicht und Scheinwerfer,
   // gain = km/h pro Motor-Stufe, cost = Tuning-Teile sind so viel mal teurer
   const SCOOTERS = [
-    { name: 'NINEBOT MAX G3', kmh: 80, accel: 6.0, dual: false, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0,
-      tail: [-5.4, 3.6], lamp: [23.9, 18.2] },
-    { name: 'KUKIRIN G4', kmh: 105, accel: 7.5, dual: false, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9,
-      tail: [-4.1, 6.2], lamp: [26.4, 9.6] },
-    { name: 'DUALTRON X LIMITED', kmh: 125, accel: 10.5, dual: true, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3,
-      tail: [-3.2, 7.6], lamp: [27.5, 7.6] },
+    { name: 'NINEBOT MAX G3', kmh: 80, accel: 6.0, dual: false, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 4,
+      label: 'MAX G3', tail: [-5.9, 2.9], lamp: [22.9, 21.2] },
+    { name: 'KUKIRIN G4', kmh: 105, accel: 7.5, dual: false, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 12,
+      label: 'KUKIRIN G4', tail: [-3.8, 7.2], lamp: [24.9, 23.8] },
+    { name: 'DUALTRON X LIMITED', kmh: 125, accel: 10.5, dual: true, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 11,
+      label: 'DUALTRON', tail: [-2.9, 7.9], lamp: [26.9, 13.7] },
   ];
   const PARTS = [
     { name: 'MOTOR', info: g => '+' + g + ' KM/H' },
@@ -61,7 +61,8 @@
 
   const COLORS = [['MINT', 0x19C2A0], ['BLAU', 0x2F7DE1], ['PINK', 0xFF5FA2], ['FEUER-ROT', 0xE8322B],
     ['SCHWARZ', 0x3A3A46], ['GOLD', 0xFFC83D], ['REGENBOGEN', -1], ['NEON-GRÜN', 0x9DFF3A],
-    ['LILA', 0x9B5DE5], ['ORANGE', 0xFF8A1F], ['WEISS', 0xF2F2F6], ['EIS-BLAU', 0x8FE8FF]];
+    ['LILA', 0x9B5DE5], ['ORANGE', 0xFF8A1F], ['WEISS', 0xF2F2F6], ['EIS-BLAU', 0x8FE8FF],
+    ['GRAU', 0x7C838F]];
 
   // ------------------------------------------------------------------
   // Feste Werte
@@ -493,7 +494,7 @@
     return { S, hip, cp, sp, th, psi: th * 180 / PI * lean + A[2] + (B[2] - A[2]) * f };
   }
 
-  function wheel(p, r, rot, kind, col, motor, th, spin) {
+  function wheel(p, r, rot, kind, col, motor, th, spin, cal) {
     // kind: 0 normal, 1 Stollen (Gelände), 2 extra breit; spin = wie schnell es dreht (rad/s)
     circ(p, r, '#15151a');
     ctx.lineCap = 'butt';
@@ -536,7 +537,7 @@
     else circ(p, r * 0.2, '#17171c');
     const a = rad(135) + (th || 0);                            // Bremssattel (dreht sich nicht mit)
     const q = [p[0] + cos(a) * rd, p[1] - sin(a) * rd];
-    seg([q[0] - sin(a) * 0.7, q[1] - cos(a) * 0.7], [q[0] + sin(a) * 0.7, q[1] + cos(a) * 0.7], r * 0.26, '#c4282a');
+    seg([q[0] - sin(a) * 0.7, q[1] - cos(a) * 0.7], [q[0] + sin(a) * 0.7, q[1] + cos(a) * 0.7], r * 0.26, cal || '#c4282a');
     ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 0.6; ctx.lineCap = 'butt';     // Glanz auf dem Reifen
     ctx.beginPath(); ctx.arc(p[0], p[1], r - 0.8, -2.4, -1.2); ctx.stroke();
   }
@@ -548,77 +549,173 @@
     ctx.beginPath(); ctx.arc(p[0], p[1], r + 1.5, -(rad(a1) + th), -(rad(a0) + th)); ctx.stroke();
   }
 
-  function drawScooter(model, S, th, col, rotF, rotR, dual, spinF, spinR) {
-    const c = hex(col), cd = shade(col, -0.3), cl = shade(col, 0.35);
-    const D = '#17171c', D2 = '#2a2b33', M = '#a8aeb6', r = model.r, wb = model.wb;
-    if (model === SCOOTERS[0]) {
-      // --- Ninebot Max G3: schlank, Pendler-Scooter ---
-      wheel(S(0, 0), r, rotR, 0, c, true, th, spinR);
-      wheel(S(wb, 0), r, rotF, 0, c, dual, th, spinF);
-      fender(S, th, 0, r, 35, 150, D2);
-      circ(S(-5.4, 3.6), 0.9, '#ff3b30');                       // Rücklicht
-      fender(S, th, wb, r, 40, 140, D2);
-      seg(S(26, 0), S(24.3, 5.5), 2.2, D);                      // Gabel
-      poly([S(1, 0.9), S(21, 0.9), S(21.8, -0.6), S(20.6, -2.4), S(1.6, -2.4), S(0.6, -0.8)], c);   // Trittbrett
-      poly([S(1.4, -1.2), S(21, -1.2), S(20.6, -2.4), S(1.6, -2.4)], cd);
-      seg(S(3, 0.9), S(19, 0.9), 0.9, D2);                      // Gummi-Matte
-      seg(S(19.5, -0.8), S(24.3, 5.0), 3.0, c);                 // Hals
-      seg(S(24.3, 5.0), S(21.3, 22.5), 2.4, D2);                // Lenkstange
-      seg(S(24.7, 6.0), S(21.9, 22.0), 0.5, 'rgba(255,255,255,0.22)');
-      seg(S(24.0, 6.6), S(23.1, 12), 2.5, c);
-      seg(S(18.6, 22.8), S(23.8, 22.8), 2.4, D);                // Lenker
-      seg(S(20.6, 24.2), S(22.6, 24.2), 1.2, '#2bd4ff');        // Display
-      seg(S(23.5, 17.0), S(23.9, 19.3), 2.2, '#fff3b8');        // Licht
-    } else if (model === SCOOTERS[1]) {
-      // --- Kukirin G4: kräftig, Gelände-Reifen, Federung ---
-      seg(S(0, 0), S(5, 0.2), 2.6, D2);                         // Schwinge hinten
-      seg(S(wb, 0), S(22.4, 2.6), 2.6, D2);                     // Schwinge vorn
-      wheel(S(0, 0), r, rotR, 1, c, true, th, spinR);
-      wheel(S(wb, 0), r, rotF, 1, c, dual, th, spinF);
-      fender(S, th, 0, r, 50, 135, D);
-      fender(S, th, wb, r, 45, 140, D);
-      seg(S(25.4, 1.6), S(23.4, 7.6), 1.9, '#e8322b');          // Feder vorn
-      seg(S(25.4, 1.6), S(23.4, 7.6), 0.6, '#ffb0a8');
-      poly([S(-5.2, 6.2), S(-3.6, 7.4), S(3.4, 1.6), S(0.6, 1.4)], D2);       // Fußstütze hinten
-      seg(S(-4.6, 6.6), S(-3.6, 5.8), 1.0, '#ff3b30');
-      poly([S(1, 1.5), S(21.4, 1.5), S(22.6, -0.6), S(21, -3.3), S(2.4, -3.3), S(0.6, -0.8)], c);   // Trittbrett
-      poly([S(1.8, -1.9), S(21.8, -1.9), S(21, -3.3), S(2.4, -3.3)], cd);
-      seg(S(4.6, -0.3), S(18.6, -0.3), 1.3, D);                 // Seitenstreifen
-      seg(S(3, 1.5), S(19.6, 1.5), 0.9, D2);
-      seg(S(20.4, 0.2), S(24.6, 6.5), 3.8, D2);                 // Klapp-Gelenk
-      seg(S(24.6, 6.5), S(21.4, 22.6), 3.0, c);                 // Lenkstange
-      seg(S(24.9, 6.5), S(21.7, 22.6), 0.7, cl);
-      circ(S(26.0, 9.6), 1.6, D);                               // Scheinwerfer
-      circ(S(26.3, 9.6), 1.0, '#fff3b8');
-      seg(S(18.2, 23.0), S(24.0, 23.0), 2.6, D);                // Lenker
-      seg(S(20.2, 24.6), S(22.8, 24.6), 1.5, '#2bd4ff');
-    } else {
-      // --- Dualtron X Limited: riesig, doppelte Lenkstange, fette Reifen ---
-      seg(S(0, 0), S(6, 1.2), 3.6, D2);                         // Schwingen
-      seg(S(wb, 0), S(23.4, 1.4), 3.6, D2);
-      wheel(S(0, 0), r, rotR, 2, c, true, th, spinR);
-      wheel(S(wb, 0), r, rotF, 2, c, dual, th, spinF);
-      fender(S, th, wb, r, 55, 135, D);
-      seg(S(27.6, 1.6), S(24.6, 8.4), 2.2, '#ffc83d');          // Federbein vorn
-      seg(S(27.6, 1.6), S(24.6, 8.4), 0.7, '#fff3b8');
-      seg(S(2.6, 1.4), S(5.4, 3.2), 2.2, '#ffc83d');            // Federbein hinten
-      poly([S(-3.4, 8.8), S(-1.6, 9.8), S(5.6, 3.0), S(2.6, 2.4), S(-3.2, 6.2)], D2);   // Fußstütze hinten
-      seg(S(-3.3, 8.4), S(-3.1, 6.8), 1.1, '#ff3b30');
-      poly([S(3.4, 2.4), S(23, 2.4), S(24.4, 0.2), S(22.8, -3.7), S(4.6, -3.7), S(2.8, -0.9)], D2);   // Akku-Kasten
-      seg(S(5.2, 0.4), S(22.2, 0.4), 1.7, c);                   // Farb-Streifen
-      seg(S(5.6, -2.5), S(21.6, -2.5), 0.6, cl);                // LED-Leiste
-      seg(S(4.4, 2.4), S(21.6, 2.4), 0.9, '#3a3b44');
-      seg(S(22.6, 2.0), S(19.9, 23.0), 2.0, c);                 // doppelte Lenkstange
-      seg(S(22.9, 3.0), S(20.3, 22.4), 0.5, cl);
-      seg(S(25.6, 2.6), S(22.7, 23.0), 2.0, c);
-      seg(S(24.0, 8.0), S(22.0, 8.0), 1.3, D);
-      seg(S(22.9, 15.5), S(21.0, 15.5), 1.3, D);
-      circ(S(27.1, 7.6), 1.5, D); circ(S(27.4, 7.6), 0.95, '#fff3b8');      // zwei Scheinwerfer
-      circ(S(26.6, 11.2), 1.5, D); circ(S(26.9, 11.2), 0.95, '#fff3b8');
-      seg(S(17.8, 23.4), S(24.6, 23.4), 2.9, D);                // Lenker
-      seg(S(20.0, 25.2), S(23.0, 25.2), 1.6, '#2bd4ff');
+  function shock(a, b, w, col) {
+    // Federbein: Dämpfer in der Mitte, Feder im Zickzack außen herum
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L * w / 2, ny = dx / L * w / 2, n = max(6, Math.round(L / 0.5));
+    seg(a, b, w * 0.42, '#23242c');
+    ctx.strokeStyle = col; ctx.lineWidth = 0.42; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const t = 0.1 + 0.8 * i / n, sg = i & 1 ? 1 : -1;
+      const x = a[0] + dx * t + nx * sg, y = a[1] + dy * t + ny * sg;
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
     }
-    void M;
+    ctx.stroke();
+    circ(a, w * 0.36, '#6a6f7a'); circ(b, w * 0.36, '#6a6f7a');
+  }
+
+  function lettering(S, th, x, y, str, size, col, along) {
+    // Schrift auf dem Scooter; along = Richtung in Grad (0 = nach vorn, 90 = nach oben)
+    const q = S(x, y);
+    ctx.save();
+    ctx.translate(q[0], q[1]);
+    ctx.rotate(-(th + rad(along || 0)));
+    ctx.font = 'italic 900 ' + size + 'px' + FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = col;
+    ctx.fillText(str, 0, 0);
+    ctx.restore();
+  }
+
+  function checker(S, x, y, col) {
+    // kleines Karo-Muster (Aufkleber)
+    const q = 0.62;
+    for (const [i, k] of [[0, 0], [1, 1], [2, 0], [3, 1]])
+      poly([S(x + i * q, y + k * q), S(x + i * q + q, y + k * q), S(x + i * q + q, y + k * q - q), S(x + i * q, y + k * q - q)], col);
+  }
+
+  function cable(S, a, c, b) {
+    // Bremskabel: dünner Bogen vom Lenker nach unten
+    const p0 = S(a[0], a[1]), p1 = S(c[0], c[1]), p2 = S(b[0], b[1]);
+    ctx.strokeStyle = '#101014'; ctx.lineWidth = 0.38; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.quadraticCurveTo(p1[0], p1[1], p2[0], p2[1]); ctx.stroke();
+  }
+
+  function drawScooter(model, S, th, col, rotF, rotR, dual, spinF, spinR) {
+    // Die drei Scooter sind nach Fotos der echten Modelle gezeichnet (Seitenansicht).
+    // Koordinaten: Hinterachse = 0,0; x nach vorn, y nach oben. Griff bei 20.3 / 22.8.
+    const c = hex(col), cd = shade(col, -0.3), cl = shade(col, 0.4);
+    const D = '#17171c', D2 = '#2a2b33', ST = '#8d939d', RED = '#e0282a', CY = '#2bd4ff';
+    const r = model.r, wb = model.wb;
+    const hi = 'rgba(255,255,255,0.2)';
+    if (model === SCOOTERS[0]) {
+      // --- Ninebot Max G3: schlank, schwarzes Fahrwerk, rote Federn und Bremssättel ---
+      wheel(S(0, 0), r, rotR, 0, c, true, th, spinR, RED);
+      wheel(S(wb, 0), r, rotF, 0, c, dual, th, spinF, RED);
+      fender(S, th, 0, r, 22, 158, D);                          // langes Schutzblech hinten
+      seg(S(-5.7, 3.4), S(-6.1, 2.2), 1.1, D2);
+      circ(S(-5.9, 2.9), 0.75, '#ff3b30');                      // Rücklicht
+      fender(S, th, wb, r, 42, 152, D);
+      seg(S(0, 0), S(5.6, -0.9), 2.0, D2);                      // Schwinge hinten
+      circ(S(0, 0), 0.8, ST);
+      shock(S(1.3, 2.5), S(5.0, 0.5), 1.6, RED);                // Federbein hinten
+      seg(S(wb, 0), S(24.8, 4.4), 2.1, D);                      // Gabel
+      circ(S(wb, 0), 0.8, ST);
+      shock(S(25.0, 3.4), S(23.8, 7.2), 1.6, RED);              // Hydraulik-Federung vorn
+      seg(S(10.6, -2.2), S(9.2, -4.7), 0.55, '#6a6f7a');        // Ständer
+      poly([S(4.4, 0.9), S(18.4, 0.9), S(20.4, -0.5), S(19.6, -2.3), S(5.0, -2.3), S(3.8, -0.9)], c);    // Trittbrett
+      poly([S(4.3, -1.35), S(20.1, -1.35), S(19.6, -2.3), S(5.0, -2.3)], cd);
+      seg(S(5.2, 0.95), S(18.0, 0.95), 0.8, D2);                // Gummi-Matte
+      seg(S(4.9, -0.2), S(6.1, -0.2), 0.7, '#ff8a1f');          // Reflektoren
+      seg(S(17.6, -0.2), S(18.8, -0.2), 0.7, '#ff8a1f');
+      lettering(S, th, 8.2, -0.2, model.label, 1.45, cl, 0);
+      seg(S(18.6, -0.7), S(23.0, 6.2), 3.0, c);                 // Hals
+      seg(S(19.6, 0.0), S(23.3, 5.7), 0.45, hi);
+      cable(S, [22.4, 22.6], [27.6, 15], [24.7, 6.4]);
+      seg(S(23.2, 8.0), S(20.9, 22.2), 2.1, c);                 // Lenkstange
+      seg(S(23.7, 8.8), S(21.5, 21.8), 0.42, hi);
+      circ(S(23.3, 7.0), 1.75, D2);                             // Klapp-Gelenk
+      circ(S(23.3, 7.0), 0.6, RED);
+      seg(S(22.4, 20.3), S(22.7, 21.9), 1.6, '#fff3b8');        // Licht
+      seg(S(19.8, 23.7), S(22.8, 24.0), 1.6, D);                // Display im Lenker
+      seg(S(20.3, 24.5), S(22.3, 24.7), 0.5, CY);
+      seg(S(20.9, 22.3), S(23.3, 21.3), 0.45, ST);              // Bremshebel
+      circ(S(20.3, 22.8), 1.3, D);
+    } else if (model === SCOOTERS[1]) {
+      // --- Kukirin G4: kantiger Rahmen, breite Reifen, schwarze Lenkstange, orange Details ---
+      const O = '#ff7a1a', K = '#1c1d24';
+      wheel(S(0, 0), r, rotR, 1, c, true, th, spinR, O);
+      wheel(S(wb, 0), r, rotF, 1, c, dual, th, spinF, O);
+      fender(S, th, 0, r, 38, 142, D);
+      fender(S, th, wb, r, 52, 128, D);
+      seg(S(0, 0), S(5.8, 0.2), 2.9, c);                        // Schwinge hinten
+      seg(S(0.6, 0.6), S(5.4, 0.8), 0.4, cl);
+      circ(S(0, 0), 0.95, ST);
+      shock(S(0.9, 3.0), S(5.0, 1.2), 1.7, '#9aa0aa');
+      seg(S(2.6, 1.6), S(0.6, 5.2), 1.2, D2);                   // Fußstütze hinten
+      poly([S(-3.7, 7.2), S(-3.1, 8.1), S(4.5, 4.2), S(3.9, 3.3)], D);
+      seg(S(-3.5, 7.6), S(-3.95, 6.8), 0.9, '#ff3b30');
+      seg(S(24.9, 8.6), S(25.5, 3.0), 2.5, K);                  // Lenksäule nach unten
+      seg(S(24.2, 2.7), S(wb, 0), 2.9, c);                      // Schwinge vorn
+      seg(S(24.4, 3.3), S(26.6, 0.7), 0.4, cl);
+      circ(S(wb, 0), 0.95, ST);
+      shock(S(26.1, 7.6), S(26.9, 1.5), 1.9, '#9aa0aa');        // Federbein vorn
+      seg(S(11.6, -1.7), S(13.0, -5.3), 0.6, '#6a6f7a');        // Ständer
+      poly([S(3.6, 1.5), S(20.2, 1.5), S(21.6, 0.2), S(20.6, -1.7), S(4.4, -1.7), S(3.2, -0.2)], c);    // Trittbrett
+      poly([S(3.8, -0.9), S(21.0, -0.9), S(20.6, -1.7), S(4.4, -1.7)], cd);
+      seg(S(4.6, 1.55), S(19.4, 1.55), 0.8, D2);
+      checker(S, 4.6, 0.55, O);
+      checker(S, 17.0, 0.55, O);
+      poly([S(8.0, 0.7), S(10.2, 0.7), S(10.2, -0.2), S(8.0, -0.2)], '#ffd23f');     // Aufkleber
+      seg(S(19.4, -0.2), S(23.8, 7.6), 3.5, c);                 // schräger Träger zum Lenkkopf
+      seg(S(20.5, 0.6), S(24.2, 7.1), 0.45, cl);
+      checker(S, 20.9, 3.6, O);
+      seg(S(23.3, 8.2), S(25.3, 9.7), 2.7, D2);                 // Klapp-Gelenk
+      circ(S(24.3, 8.95), 0.6, O);
+      cable(S, [22.6, 23], [28.4, 16], [26.4, 6.6]);
+      seg(S(24.3, 9.9), S(21.3, 22.0), 3.0, K);                 // breite schwarze Lenkstange
+      seg(S(25.2, 10.4), S(22.3, 21.8), 0.4, hi);
+      lettering(S, th, 23.75, 11.6, model.label, 1.5, O, 103.8);
+      poly([S(19.5, 23.2), S(24.5, 23.0), S(25.1, 24.4), S(21.4, 25.7), S(19.7, 24.9)], D);     // Cockpit mit LED-Licht
+      seg(S(20.3, 24.6), S(22.4, 25.0), 0.6, CY);
+      seg(S(24.5, 23.4), S(24.8, 24.1), 0.9, '#fff3b8');
+      seg(S(20.9, 22.3), S(23.4, 21.4), 0.45, ST);
+      circ(S(20.3, 22.8), 1.3, D);
+    } else {
+      // --- Dualtron X Limited: riesiger Akku-Kasten, eine dicke Lenksäule, fette 13-Zoll-Reifen ---
+      const K = '#1c1d24', K2 = '#30323c', SV = '#c9ced6';
+      wheel(S(0, 0), r, rotR, 2, c, true, th, spinR, RED);
+      wheel(S(wb, 0), r, rotF, 2, c, dual, th, spinF, RED);
+      fender(S, th, 0, r, 32, 122, D);
+      seg(S(0, 0), S(6.6, 0.6), 3.7, K2);                       // Schwingen
+      seg(S(0.8, 1.2), S(6.2, 1.7), 0.45, c);
+      circ(S(0, 0), 1.05, ST);
+      seg(S(wb, 0), S(23.8, 1.0), 3.7, K2);
+      seg(S(24.4, 1.9), S(29.2, 1.1), 0.45, c);
+      circ(S(wb, 0), 1.05, ST);
+      seg(S(8.2, -3.6), S(6.6, -6.3), 0.7, '#6a6f7a');          // Ständer
+      poly([S(-2.7, 8.5), S(-1.9, 9.4), S(5.2, 4.5), S(4.8, 2.4), S(2.6, 2.4)], K);     // Fußstütze hinten
+      seg(S(-2.6, 8.4), S(-2.9, 7.3), 1.0, '#ff3b30');
+      shock(S(-0.5, 6.5), S(4.0, 3.4), 2.1, SV);                // Federbein hinten
+      circ(S(-0.7, 6.7), 0.65, RED);
+      poly([S(3.6, 2.4), S(22.6, 2.4), S(23.9, 0.6), S(22.7, -3.7), S(4.8, -3.7), S(3.2, -1.0)], K);    // Akku-Kasten
+      poly([S(4.6, 1.3), S(22.6, 1.3), S(22.3, -2.7), S(5.2, -2.7), S(4.2, -0.9)], K2);
+      seg(S(4.4, 2.4), S(21.8, 2.4), 0.9, '#3a3b44');           // Griptape
+      seg(S(5.4, -0.7), S(7.6, -0.7), 1.5, '#ff3b30');          // Rücklicht in der Seite
+      seg(S(5.4, -0.7), S(7.6, -0.7), 0.4, '#ffb0a8');
+      lettering(S, th, 8.7, -0.75, model.label, 1.9, cl, 0);
+      circ(S(21.1, -0.7), 1.2, '#ffd23f');                      // gelber Ring
+      circ(S(21.1, -0.7), 0.72, K);
+      seg(S(5.6, -3.25), S(22.0, -3.25), 0.5, c);               // LED-Leiste unten
+      poly([S(20.6, 2.4), S(24.4, 0.3), S(26.4, 9.0), S(22.6, 10.2)], K);      // Hals-Block
+      seg(S(25.6, 8.3), S(34.2, 7.7), 0.95, K);                 // Schutzblech vorn (gerade Platte)
+      shock(S(24.5, 7.3), S(28.6, 2.6), 2.1, SV);               // Federbein vorn
+      circ(S(24.3, 7.5), 0.65, RED);
+      poly([S(22.1, 9.6), S(26.5, 8.7), S(26.8, 12.3), S(22.7, 13.2)], K2);    // Klapp-Block
+      circ(S(23.6, 11.6), 0.5, ST); circ(S(25.5, 10.2), 0.5, ST);
+      cable(S, [22.6, 23.4], [29.4, 17], [27.0, 9.4]);
+      seg(S(24.5, 12.8), S(21.5, 22.2), 3.7, K);                // dicke Lenksäule
+      seg(S(25.8, 13.4), S(22.9, 22.0), 0.42, hi);
+      lettering(S, th, 23.55, 15.4, model.label, 1.55, cl, 107.4);
+      circ(S(26.2, 13.7), 1.75, K2);                            // runder Scheinwerfer
+      circ(S(26.6, 13.7), 1.15, '#fff3b8');
+      seg(S(19.6, 23.5), S(23.4, 23.7), 2.5, K);                // Lenker-Klemme und Display
+      seg(S(20.3, 25.2), S(22.9, 25.4), 1.3, D);
+      seg(S(20.7, 25.6), S(22.5, 25.7), 0.45, CY);
+      seg(S(20.9, 22.3), S(23.6, 21.5), 0.5, ST);
+      circ(S(20.3, 22.8), 1.4, D);
+    }
   }
 
   const SKIN = '#f4c7a1', SKIN_D = '#d79f7a', SHIRT = '#e84a3c', SHIRT_D = '#b8372d';
@@ -697,7 +794,7 @@
       ctx.translate(lamp[0], lamp[1]);
       ctx.rotate(0.16 - o.th);
       const gr = ctx.createLinearGradient(0, 0, 62, 0);
-      gr.addColorStop(0, 'rgba(255,244,190,0.30)'); gr.addColorStop(1, 'rgba(255,244,190,0)');
+      gr.addColorStop(0, 'rgba(255,244,190,0.20)'); gr.addColorStop(1, 'rgba(255,244,190,0)');
       ctx.fillStyle = gr;
       ctx.beginPath(); ctx.moveTo(0, -1); ctx.lineTo(62, -9); ctx.lineTo(62, 13); ctx.lineTo(0, 1); ctx.closePath(); ctx.fill();
       ctx.restore();
