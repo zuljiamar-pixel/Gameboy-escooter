@@ -31,20 +31,27 @@
   // SCOOTER und TUNING
   // ------------------------------------------------------------------
   // name = so heißt der Scooter im Spiel, kmh = Höchstgeschwindigkeit ohne Tuning,
-  // price = Preis in Münzen,
+  // accel = Beschleunigung beim Anfahren (m/s², das Original hat 6.0),
+  // dual = hat schon ab Werk zwei Motoren, price = Preis in Münzen,
   // gain = km/h pro Motor-Stufe, cost = Tuning-Teile sind so viel mal teurer
   const SCOOTERS = [
-    { name: 'NINEBOT MAX G3', kmh: 80, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0 },
-    { name: 'KUKIRIN G4', kmh: 105, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9 },
-    { name: 'DUALTRON X LIMITED', kmh: 125, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3 },
+    { name: 'NINEBOT MAX G3', kmh: 80, accel: 6.0, dual: false, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0 },
+    { name: 'KUKIRIN G4', kmh: 105, accel: 7.5, dual: false, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9 },
+    { name: 'DUALTRON X LIMITED', kmh: 125, accel: 10.5, dual: true, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3 },
   ];
   const PARTS = [
     { name: 'MOTOR', info: g => '+' + g + ' KM/H' },
     { name: 'CONTROLLER', info: () => '+2 KM/H, MEHR ANZUG' },
     { name: 'AKKU', info: () => '+2 KM/H, BOOST STÄRKER' },
     { name: 'REIFEN', info: () => '+2 KM/H, BREMST BESSER' },
+    { name: 'DUAL MOTOR', max: 1, info: () => '+5 KM/H, VIEL MEHR ANZUG' },
   ];
+  const DUAL = 4;                         // Nummer vom Dual-Motor in PARTS
+  const DUAL_PRICE = 400;                 // Preis vom zweiten Motor (mal "cost" vom Scooter)
+  const DUAL_ACCEL = 2.5;                 // so viel mehr Beschleunigung bringt er (m/s²)
+  const DUAL_POWER = 1.6;                 // und so viel mal mehr Kraft bei hohem Tempo
   const PART_LEVELS = 3;
+  const levels = k => PARTS[k].max || PART_LEVELS;
   const PART_PRICE = [60, 150, 300];      // Preis für Stufe 1, 2, 3 (mal "cost" vom Scooter)
   const COIN_PER_M = 2;                   // Münzen pro Meter Wheelie (Trick-Punkte kommen dazu)
 
@@ -112,10 +119,11 @@
       if (d.color && d.color[i] >= 0 && d.color[i] < COLORS.length) store.color[i] = floor(d.color[i]);
       PARTS.forEach((p, k) => {
         const v = d.tune && d.tune[i] && d.tune[i][k];
-        if (v >= 0 && v <= PART_LEVELS) store.tune[i][k] = floor(v);
+        if (v >= 0 && v <= levels(k)) store.tune[i][k] = floor(v);
       });
     });
   } catch (e) { /* kein Speicher: dann eben ohne */ }
+  SCOOTERS.forEach((s, i) => { if (s.dual) store.tune[i][DUAL] = 1; });   // ab Werk eingebaut
   const m = /[?&]coins=(\d+)/.exec(location.search);      // zum Testen: ?coins=5000
   if (m) store.coins = +m[1];
   function saveStore() {
@@ -126,15 +134,16 @@
   const car = { vmax: VMAX0, kmh: MAX_KMH, accel: ACCEL, power: POWER, boost: BOOST_ACCEL, brake: BRAKE };
   function topSpeed(i) {
     const t = store.tune[i];
-    return SCOOTERS[i].kmh + SCOOTERS[i].gain * t[0] + 2 * (t[1] + t[2] + t[3]);
+    return SCOOTERS[i].kmh + SCOOTERS[i].gain * t[0] + 2 * (t[1] + t[2] + t[3]) +
+      (SCOOTERS[i].dual ? 0 : 5 * t[DUAL]);
   }
   function applyTuning() {
-    const t = store.tune[store.scooter];
+    const t = store.tune[store.scooter], mdl = SCOOTERS[store.scooter];
     car.kmh = topSpeed(store.scooter);
     car.vmax = car.kmh / 3.6;
     const k = car.kmh / MAX_KMH;
-    car.power = POWER * k * k * k;        // genug Kraft, um das neue Tempo auch zu erreichen
-    car.accel = ACCEL + 0.8 * t[1];
+    car.power = POWER * k * k * k * (t[DUAL] ? DUAL_POWER : 1);   // genug Kraft für das neue Tempo
+    car.accel = mdl.accel + 0.8 * t[1] + (t[DUAL] && !mdl.dual ? DUAL_ACCEL : 0);
     car.boost = BOOST_ACCEL + 2.0 * t[2];
     car.brake = BRAKE + 1.0 * t[3];
   }
@@ -396,7 +405,7 @@
     return { S, hip, cp, sp, th, psi: th * 180 / PI * lean + A[2] + (B[2] - A[2]) * f };
   }
 
-  function wheel(p, r, rot, kind, col) {
+  function wheel(p, r, rot, kind, col, motor) {
     // kind: 0 normal, 1 Stollen (Gelände), 2 extra breit
     circ(p, r, '#17171c');
     if (kind === 1) {
@@ -416,7 +425,8 @@
       ctx.lineTo(p[0] + cos(a) * ri, p[1] + sin(a) * ri);
     }
     ctx.stroke();
-    circ(p, r * 0.2, '#17171c');
+    if (motor) { circ(p, r * 0.36, '#3a3b44'); circ(p, r * 0.27, '#17171c'); circ(p, r * 0.1, '#a8aeb6'); }
+    else circ(p, r * 0.2, '#17171c');
     ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 0.6;     // Glanz auf dem Reifen
     ctx.beginPath(); ctx.arc(p[0], p[1], r - 0.8, -2.4, -1.2); ctx.stroke();
   }
@@ -428,13 +438,13 @@
     ctx.beginPath(); ctx.arc(p[0], p[1], r + 1.5, -(rad(a1) + th), -(rad(a0) + th)); ctx.stroke();
   }
 
-  function drawScooter(model, S, th, col, rotF, rotR) {
+  function drawScooter(model, S, th, col, rotF, rotR, dual) {
     const c = hex(col), cd = shade(col, -0.3), cl = shade(col, 0.35);
     const D = '#17171c', D2 = '#2a2b33', M = '#a8aeb6', r = model.r, wb = model.wb;
     if (model === SCOOTERS[0]) {
       // --- Ninebot Max G3: schlank, Pendler-Scooter ---
-      wheel(S(0, 0), r, rotR, 0, c);
-      wheel(S(wb, 0), r, rotF, 0, c);
+      wheel(S(0, 0), r, rotR, 0, c, true);
+      wheel(S(wb, 0), r, rotF, 0, c, dual);
       fender(S, th, 0, r, 35, 150, D2);
       circ(S(-5.4, 3.6), 0.9, '#ff3b30');                       // Rücklicht
       fender(S, th, wb, r, 40, 140, D2);
@@ -452,8 +462,8 @@
       // --- Kukirin G4: kräftig, Gelände-Reifen, Federung ---
       seg(S(0, 0), S(5, 0.2), 2.6, D2);                         // Schwinge hinten
       seg(S(wb, 0), S(22.4, 2.6), 2.6, D2);                     // Schwinge vorn
-      wheel(S(0, 0), r, rotR, 1, c);
-      wheel(S(wb, 0), r, rotF, 1, c);
+      wheel(S(0, 0), r, rotR, 1, c, true);
+      wheel(S(wb, 0), r, rotF, 1, c, dual);
       fender(S, th, 0, r, 50, 135, D);
       fender(S, th, wb, r, 45, 140, D);
       seg(S(25.4, 1.6), S(23.4, 7.6), 1.9, '#e8322b');          // Feder vorn
@@ -475,8 +485,8 @@
       // --- Dualtron X Limited: riesig, doppelte Lenkstange, fette Reifen ---
       seg(S(0, 0), S(6, 1.2), 3.6, D2);                         // Schwingen
       seg(S(wb, 0), S(23.4, 1.4), 3.6, D2);
-      wheel(S(0, 0), r, rotR, 2, c);
-      wheel(S(wb, 0), r, rotF, 2, c);
+      wheel(S(0, 0), r, rotR, 2, c, true);
+      wheel(S(wb, 0), r, rotF, 2, c, dual);
       fender(S, th, wb, r, 55, 135, D);
       seg(S(27.6, 1.6), S(24.6, 8.4), 2.2, '#ffc83d');          // Federbein vorn
       seg(S(27.6, 1.6), S(24.6, 8.4), 0.7, '#fff3b8');
@@ -568,7 +578,7 @@
     const model = o.model, g = body(o.th, o.pose, o.lean, model.dy);
     ctx.save();
     ctx.translate(x, y);
-    drawScooter(model, g.S, o.th, o.col, o.rotF, o.rotR);
+    drawScooter(model, g.S, o.th, o.col, o.rotF, o.rotR, o.dual);
     drawLeg(g, model, false);
     if (o.swing !== null) drawSwing(g.hip, o.swing); else drawLeg(g, model, true);
     const sh = drawTorso(g.hip, g.psi, o.col);
@@ -1017,11 +1027,13 @@
       play(SND_OFF);
     }
   }
-  function partPrice(i, level) { return Math.round(PART_PRICE[level] * SCOOTERS[i].cost / 10) * 10; }
+  function partPrice(i, level, k) {
+    return Math.round((k === DUAL ? DUAL_PRICE : PART_PRICE[level]) * SCOOTERS[i].cost / 10) * 10;
+  }
   function buyPart(k) {
     const i = store.scooter, lv = store.tune[i][k];
-    if (lv >= PART_LEVELS) return;
-    const p = partPrice(i, lv);
+    if (lv >= levels(k)) return;
+    const p = partPrice(i, lv, k);
     if (store.coins < p) { toast('ZU WENIG MÜNZEN'); play(SND_OFF); return; }
     store.coins -= p;
     store.tune[i][k] = lv + 1;
@@ -1124,22 +1136,23 @@
       return;
     }
     for (let k = 0; k < PARTS.length; k++) {
-      const y = py + 21 + k * 17.5, lv = store.tune[i][k], p = PARTS[k];
-      ctx.fillStyle = 'rgba(255,255,255,0.06)'; rrect(px + 4, y, pw - 8, 16, 2.5); ctx.fill();
-      text(p.name, px + 8, y + 2, 5.6, '#ffffff', 0);
-      text(p.info(mdl.gain), px + 8, y + 9.5, 3.6, '#9fb4e8', 0, false);
-      for (let s = 0; s < PART_LEVELS; s++) {             // Stufen-Anzeige
+      const y = py + 20 + k * 14.6, lv = store.tune[i][k], p = PARTS[k], n = levels(k);
+      const stock = k === DUAL && mdl.dual;
+      ctx.fillStyle = 'rgba(255,255,255,0.06)'; rrect(px + 4, y, pw - 8, 13.4, 2.5); ctx.fill();
+      text(p.name, px + 8, y + 1.2, 5.2, '#ffffff', 0);
+      text(stock ? 'HAT ER SCHON AB WERK' : p.info(mdl.gain), px + 8, y + 8.2, 3.4, '#9fb4e8', 0, false);
+      for (let s = 0; s < n; s++) {                       // Stufen-Anzeige
         ctx.fillStyle = s < lv ? '#3ccb5a' : '#33406e';
-        rrect(px + pw - 74 + s * 8, y + 5, 6.4, 6.4, 1.4); ctx.fill();
+        rrect(px + pw - 74 + (s + PART_LEVELS - n) * 8, y + 3.6, 6.4, 6.4, 1.4); ctx.fill();
       }
-      if (lv >= PART_LEVELS) {
-        button(px + pw - 46, y + 2, 39, 12, 'MAX', { off: true, size: 5.2 });
+      if (lv >= n) {
+        button(px + pw - 46, y + 1.5, 39, 10.4, stock ? 'SERIE' : k === DUAL ? 'DRIN' : 'MAX', { off: true, size: 5 });
       } else {
-        const price = partPrice(i, lv);
-        if (button(px + pw - 46, y + 2, 39, 12, '', { price, size: 5.4, color: '#2e9e48', off: store.coins < price })) buyPart(k);
+        const price = partPrice(i, lv, k);
+        if (button(px + pw - 46, y + 1.5, 39, 10.4, '', { price, size: 5.2, color: '#2e9e48', off: store.coins < price })) buyPart(k);
       }
     }
-    const y = py + 21 + PARTS.length * 17.5 + 2.5;
+    const y = py + 20 + PARTS.length * 14.6 + 2.5;
     text('TOP ' + topSpeed(i) + ' KM/H', px + 8, y + 2.5, 7, '#ffe27a', 0);
     if (button(px + pw - 54, y, 47, 13, 'FERTIG', { color: '#2f4a8f', size: 6 })) G.tuning = false;
     if (G.toast) text(G.toast, W / 2, py + ph - 9, 5, '#ff9d8f', 1);
@@ -1206,7 +1219,7 @@
     ctx.beginPath();
     ctx.ellipse(x + mdl.wb / 2 * cos(min(G.th, 1.5)) + 1, GY + 0.8, mdl.wb / 2 + mdl.r + 1 - 6 * sin(min(G.th, 1.5)), 1.5, 0, 0, 2 * PI);
     ctx.fill();
-    const o = { model: mdl, col: G.body, rotF: G.rotF, rotR: G.rotR };
+    const o = { model: mdl, col: G.body, rotF: G.rotF, rotR: G.rotR, dual: store.tune[store.scooter][DUAL] > 0 };
     if (st === CRASH) {
       const k = clamp((G.th - CRASH_RAD) / (1.745 - CRASH_RAD), 0, 1);
       o.th = G.th; o.pose = 0; o.arms = 2; o.swing = null; o.lean = LEAN + (1 - LEAN) * k;

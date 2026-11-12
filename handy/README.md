@@ -11,12 +11,16 @@ Scooter seine eigene.
 
 ## Was ist neu?
 
-* **3 Scooter** (Tempo ohne Tuning): Ninebot Max G3 mit 80 km/h (von Anfang an),
-  Kukirin G4 mit 105 km/h (300 Münzen) und Dualtron X Limited mit 125 km/h
-  (1200 Münzen).
+* **3 Scooter**, jeder fährt anders (Werte ohne Tuning):
+
+  | Scooter | Tempo | Anzug | Preis |
+  |---|---|---|---|
+  | Ninebot Max G3 | 80 km/h | 6,0 m/s² (wie das Original) | gratis |
+  | Kukirin G4 | 105 km/h | 7,5 m/s² | 300 Münzen |
+  | Dualtron X Limited | 125 km/h | 10,5 m/s², Dual-Motor ab Werk | 1200 Münzen |
 * **Münzen** gibt es für jeden sauber gelandeten Wheelie: 2 pro Meter plus die
   Trick-Punkte.
-* **Tuning** für jeden Scooter einzeln, 4 Teile mit je 3 Stufen:
+* **Tuning** für jeden Scooter einzeln, 4 Teile mit je 3 Stufen und der Dual-Motor:
 
   | Teil | bringt pro Stufe |
   |---|---|
@@ -24,8 +28,9 @@ Scooter seine eigene.
   | Controller | +2 km/h und mehr Anzug |
   | Akku | +2 km/h und stärkerer Boost |
   | Reifen | +2 km/h und bessere Bremse |
+  | Dual-Motor (einmal) | +5 km/h und viel mehr Anzug (+2,5 m/s²). Der Dualtron hat ihn schon. |
 
-  Voll getunt: Ninebot 113 km/h, Kukirin 147 km/h, Dualtron 179 km/h.
+  Voll getunt: Ninebot 118 km/h, Kukirin 152 km/h, Dualtron 179 km/h.
 * **12 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
 * **Bessere Grafik:** alles wird scharf in der Auflösung vom Handy gezeichnet,
   der Hintergrund bewegt sich in mehreren Ebenen (Wolken, Hochhäuser, Häuser,
