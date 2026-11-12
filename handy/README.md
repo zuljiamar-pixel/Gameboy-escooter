@@ -2,42 +2,57 @@
 
 Das gleiche Spiel wie auf dem PyBadge, aber für **Android-Handys** (und jeden
 Browser). Die Physik ist 1:1 aus [`code.py`](../code.py) übernommen (gleicher
-Wheelie, gleicher Burnout und Boost). Nur die Höchstgeschwindigkeit hat jeder
-Scooter seine eigene.
+Wheelie, gleicher Burnout und Boost). Nur Tempo und Anzug hat jeder Scooter
+seine eigenen. Neu dazu kommt der **Stoppie**.
 
-| Menü | Tuning | Wheelie |
-|---|---|---|
-| ![Menü](store/screenshot-1-menue.png) | ![Tuning](store/screenshot-2-tuning.png) | ![Wheelie](store/screenshot-4-wheelie.png) |
+| Menü | Tuning | Stoppie | Wheelie |
+|---|---|---|---|
+| ![Menü](store/screenshot-1-menue.png) | ![Tuning](store/screenshot-2-tuning.png) | ![Stoppie](store/screenshot-3-stoppie.png) | ![Wheelie](store/screenshot-4-wheelie.png) |
 
 ## Was ist neu?
 
-* **3 Scooter**, jeder fährt anders (Werte ohne Tuning):
+* **Stoppie:** Das Heck geht hoch und der Scooter rollt nur noch auf dem
+  Vorderrad. Ab 12 km/h **STOPPIE** drücken, dann balancieren:
+  **BREMSE = Heck höher**, **GAS = Heck runter** (umgekehrt wie beim Wheelie).
+  Im Stoppie treibt der Motor nicht, der Scooter wird also langsamer, und wenn
+  er fast steht, kommt das Heck von selbst runter. Nochmal **STOPPIE** = sanft
+  landen. Zu weit hoch (über 58 Grad), und du fliegst über den Lenker.
+  Tricks (1 Hand, 0 Hand, Knie) gehen auch, aber mit weniger Händen wirkt die
+  Bremse schwächer. Der Stoppie hat einen eigenen Rekord.
+* **6 Scooter**, jeder fährt anders (Werte ohne Tuning):
 
   | Scooter | Tempo | Anzug | Preis |
   |---|---|---|---|
   | Ninebot Max G3 | 80 km/h | 6,0 m/s² (wie das Original) | gratis |
   | Kukirin G4 | 105 km/h | 7,5 m/s² | 300 Münzen |
+  | Segway GT2 | 112 km/h | 9,0 m/s², Dual-Motor ab Werk | 650 Münzen |
+  | Kaabo Wolf Warrior 11 | 118 km/h | 9,5 m/s², Dual-Motor ab Werk | 950 Münzen |
   | Dualtron X Limited | 125 km/h | 10,5 m/s², Dual-Motor ab Werk | 1200 Münzen |
-* **Münzen** gibt es für jeden sauber gelandeten Wheelie: 2 pro Meter plus die
-  Trick-Punkte.
+  | NAMI Burn-E 2 Max | 140 km/h | 11,5 m/s², Dual-Motor ab Werk | 2000 Münzen |
+* **Münzen** gibt es für jeden sauber gelandeten Wheelie (2 pro Meter) und
+  Stoppie (3 pro Meter), dazu kommen die Trick-Punkte.
 * **Tuning** für jeden Scooter einzeln, 4 Teile mit je 3 Stufen und der Dual-Motor:
 
   | Teil | bringt pro Stufe |
   |---|---|
-  | Motor | +5 km/h (Ninebot), +8 km/h (Kukirin), +12 km/h (Dualtron) |
+  | Motor | +5 (Ninebot), +8 (Kukirin), +10 (Segway), +11 (Kaabo), +12 (Dualtron), +13 km/h (NAMI) |
   | Controller | +2 km/h und mehr Anzug |
   | Akku | +2 km/h und stärkerer Boost |
   | Reifen | +2 km/h und bessere Bremse |
-  | Dual-Motor (einmal) | +5 km/h und viel mehr Anzug (+2,5 m/s²). Beim Burnout rauchen dann beide Reifen. Der Dualtron hat ihn schon. |
+  | Dual-Motor (einmal) | +5 km/h und viel mehr Anzug (+2,5 m/s²). Beim Burnout rauchen dann beide Reifen. Segway, Kaabo, Dualtron und NAMI haben ihn schon. |
 
-  Voll getunt: Ninebot 118 km/h, Kukirin 152 km/h, Dualtron 179 km/h.
+  Voll getunt: Ninebot 118, Kukirin 152, Segway 160, Kaabo 169, Dualtron 179,
+  NAMI 197 km/h.
 * **Scooter nach den echten Vorbildern gezeichnet** (nach Fotos): der Ninebot
   schlank mit roten Federn und Bremssätteln, der Kukirin kantig mit breiter
   schwarzer Lenkstange, Federbein vorn und orangen Details, der Dualtron mit
   Akku-Kasten, dicker Lenksäule, rundem Scheinwerfer und liegenden Federbeinen.
-* **13 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
-  Am Anfang hat jeder Scooter seine echte Farbe (Ninebot schwarz, Kukirin grau,
-  Dualtron schwarz mit eisblauen Details).
+  Der Segway mit langem flachem Trittbrett und großer Titan-Gussform vorn, der
+  Kaabo mit Motorrad-Gabel bis zum Lenker, Doppel-Scheinwerfer und
+  Gepäckträger, der NAMI mit Gitterrohr-Rahmen und langer Gabel.
+* **14 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
+  Am Anfang hat jeder Scooter seine echte Farbe (z.B. Ninebot schwarz, Kukirin
+  grau, Segway titan, Dualtron schwarz mit eisblauen Details).
 * **Bessere Grafik:** alles wird scharf in der Auflösung vom Handy gezeichnet,
   der Hintergrund bewegt sich in mehreren Ebenen (Wolken, Hochhäuser, Häuser,
   Gehweg, Straße), die Räder drehen sich.
@@ -49,11 +64,11 @@ Scooter seine eigene.
   und sprüht Funken (Warnung!). Der Motor klingt wie ein E-Motor (Summen und
   Sirren), dazu kommt Fahrtwind.
 * **Touch-Knöpfe:** links WHEELIE / 1 HAND / 0 HAND / KNIE (die kleinen Kreise
-  unten sind Knie + Hand zusammen), rechts GAS und BREMSE.
+  unten sind Knie + Hand zusammen), rechts GAS, BREMSE und STOPPIE.
   **BURN** drückt Gas und Bremse zusammen: im Stand halten, bis
   „BREMSE LOS = BOOST!" blinkt, dann den Finger **auf GAS schieben** (nicht loslassen).
-* Am Computer geht auch die Tastatur: X = Gas, C = Bremse, Pfeile = Wheelie und
-  Tricks, Enter = Start/Pause.
+* Am Computer geht auch die Tastatur: X = Gas, C = Bremse, S = Stoppie,
+  Pfeile = Wheelie und Tricks, Enter = Start/Pause.
 
 ## Ausprobieren
 
