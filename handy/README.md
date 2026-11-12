@@ -28,7 +28,7 @@ Scooter seine eigene.
   | Controller | +2 km/h und mehr Anzug |
   | Akku | +2 km/h und stärkerer Boost |
   | Reifen | +2 km/h und bessere Bremse |
-  | Dual-Motor (einmal) | +5 km/h und viel mehr Anzug (+2,5 m/s²). Der Dualtron hat ihn schon. |
+  | Dual-Motor (einmal) | +5 km/h und viel mehr Anzug (+2,5 m/s²). Beim Burnout rauchen dann beide Reifen. Der Dualtron hat ihn schon. |
 
   Voll getunt: Ninebot 118 km/h, Kukirin 152 km/h, Dualtron 179 km/h.
 * **12 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.

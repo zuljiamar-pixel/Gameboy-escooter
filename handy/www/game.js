@@ -722,7 +722,7 @@
   // ------------------------------------------------------------------
   const puffs = [];
   function emitPuff(x, y, vx, vy, life, kind) {
-    if (puffs.length < 40) puffs.push({ x, y, vx, vy, age: 0, life, kind });
+    if (puffs.length < 60) puffs.push({ x, y, vx, vy, age: 0, life, kind });
   }
   function updatePuffs(dt, scroll) {
     for (let i = puffs.length - 1; i >= 0; i--) {
@@ -833,6 +833,7 @@
 
   function updatePlay(dt) {
     const gas = (held & BTN_A) !== 0, brake = (held & BTN_B) !== 0, ay = axleY();
+    const dual = store.tune[store.scooter][DUAL] > 0;
     if (pressed & BTN_UP) {
       if (!G.wmode) { G.wmode = true; G.landing = false; G.om += POP; }      // Vorderrad hochreißen
       else if (G.th > 0) G.landing = true;                                   // nochmal: sanft landen
@@ -874,8 +875,12 @@
         G.emit -= 1;
         emitPuff(RX - 3 + randint(-2, 2), GY - 2, -25 - random() * 35, -12 - random() * 18,
           0.7 + random() * 0.5, 0);
+        if (dual)                               // Dual-Motor: auch das Vorderrad dreht durch
+          emitPuff(RX + model().wb - 3 + randint(-2, 2), GY - 2, -25 - random() * 35,
+            -12 - random() * 18, 0.7 + random() * 0.5, 0);
       }
       G.rotR += dt * 45;
+      if (dual) G.rotF += dt * 45;
     } else if (G.boost) {                       // Flammen hinten raus
       G.emit += dt * 20;
       if (G.emit >= 1) {
@@ -1210,6 +1215,8 @@
     if (G.markLen) {                            // Reifenspur
       ctx.fillStyle = '#1e1e24';
       ctx.fillRect(G.markX - G.markLen, GY - 0.6, G.markLen, 2);
+      if (store.tune[store.scooter][DUAL] > 0)    // Dual-Motor: zweite Spur vom Vorderrad
+        ctx.fillRect(G.markX - G.markLen + mdl.wb, GY - 0.6, G.markLen, 2);
     }
     // Scooter und Fahrer
     let x = menu ? W / 2 - mdl.wb / 2 - 1 : RX, y = GY - mdl.r;
