@@ -1,13 +1,13 @@
 // E-SCOOTER WHEELIE - Handy-Version (läuft im Browser und als Android-App)
 //
-// Die Physik ist 1:1 aus code.py (PyBadge-Version) übernommen. Ohne Tuning
-// fährt jeder Scooter genau wie das Original: 100 km/h, gleicher Wheelie.
+// Die Physik ist 1:1 aus code.py (PyBadge-Version) übernommen: gleicher Wheelie,
+// gleicher Burnout und Boost. Nur die Höchstgeschwindigkeit hat jeder Scooter seine eigene.
 'use strict';
 (() => {
   // ------------------------------------------------------------------
   // EINSTELLUNGEN - gleiche Werte wie in code.py
   // ------------------------------------------------------------------
-  const MAX_KMH = 100;        // Höchstgeschwindigkeit ohne Tuning
+  const MAX_KMH = 100;        // Höchstgeschwindigkeit vom Original (jeder Scooter hat seine eigene, siehe SCOOTERS)
   const ACCEL = 6.0;          // Beschleunigung beim Anfahren (m/s²)
   const POWER = 75.0;         // Motorkraft: wie gut er bei hohem Tempo noch zieht
   const BOOST_ACCEL = 14.0;   // Beschleunigung im Boost (m/s²)
@@ -30,12 +30,13 @@
   // ------------------------------------------------------------------
   // SCOOTER und TUNING
   // ------------------------------------------------------------------
-  // name = so heißt der Scooter im Spiel, price = Preis in Münzen,
+  // name = so heißt der Scooter im Spiel, kmh = Höchstgeschwindigkeit ohne Tuning,
+  // price = Preis in Münzen,
   // gain = km/h pro Motor-Stufe, cost = Tuning-Teile sind so viel mal teurer
   const SCOOTERS = [
-    { name: 'NINEBOT MAX G3', price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0 },
-    { name: 'KUKIRIN G4', price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9 },
-    { name: 'DUALTRON X LIMITED', price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3 },
+    { name: 'NINEBOT MAX G3', kmh: 80, price: 0, gain: 5, cost: 1, r: 5.0, wb: 26, dy: 0, color: 0 },
+    { name: 'KUKIRIN G4', kmh: 105, price: 300, gain: 8, cost: 1.5, r: 5.6, wb: 27, dy: 0.6, color: 9 },
+    { name: 'DUALTRON X LIMITED', kmh: 125, price: 1200, gain: 12, cost: 2.5, r: 6.6, wb: 30, dy: 1.5, color: 3 },
   ];
   const PARTS = [
     { name: 'MOTOR', info: g => '+' + g + ' KM/H' },
@@ -125,7 +126,7 @@
   const car = { vmax: VMAX0, kmh: MAX_KMH, accel: ACCEL, power: POWER, boost: BOOST_ACCEL, brake: BRAKE };
   function topSpeed(i) {
     const t = store.tune[i];
-    return MAX_KMH + SCOOTERS[i].gain * t[0] + 2 * (t[1] + t[2] + t[3]);
+    return SCOOTERS[i].kmh + SCOOTERS[i].gain * t[0] + 2 * (t[1] + t[2] + t[3]);
   }
   function applyTuning() {
     const t = store.tune[store.scooter];
@@ -1249,7 +1250,7 @@
     text('REKORD ' + store.best.toFixed(1) + ' M', IL + 4, 4, 5, '#ffffff', 0);
     coins(store.coins, IL + 4, 11, 4.6, 0);
     text(Math.round(G.v * 3.6) + ' KM/H', W - IR - 20, 3.5, 8, '#ffffff', 2);
-    if (car.kmh > MAX_KMH) text('TUNING ' + car.kmh, W - IR - 20, 13, 3.8, '#c9a6ff', 2);
+    if (car.kmh > model().kmh) text('TUNING ' + car.kmh, W - IR - 20, 13, 3.8, '#c9a6ff', 2);
     if (st === PLAY || st === CRASH) {
       if (button(W - IR - 17, 3, 14, 14, 'II', { size: 6.5, color: 'rgba(24,36,74,0.8)', inert: st === CRASH }))
         setPause(true);

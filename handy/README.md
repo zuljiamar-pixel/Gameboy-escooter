@@ -1,9 +1,9 @@
 # E-Scooter Wheelie – Handy-Version 📱
 
 Das gleiche Spiel wie auf dem PyBadge, aber für **Android-Handys** (und jeden
-Browser). Die Physik ist 1:1 aus [`code.py`](../code.py) übernommen: Ohne
-Tuning fährt jeder Scooter genau wie das Original (100 km/h, gleicher Wheelie,
-gleicher Burnout und Boost).
+Browser). Die Physik ist 1:1 aus [`code.py`](../code.py) übernommen (gleicher
+Wheelie, gleicher Burnout und Boost). Nur die Höchstgeschwindigkeit hat jeder
+Scooter seine eigene.
 
 | Menü | Tuning | Wheelie |
 |---|---|---|
@@ -11,8 +11,9 @@ gleicher Burnout und Boost).
 
 ## Was ist neu?
 
-* **3 Scooter:** Ninebot Max G3 (von Anfang an), Kukirin G4 (300 Münzen) und
-  Dualtron X Limited (1200 Münzen).
+* **3 Scooter** (Tempo ohne Tuning): Ninebot Max G3 mit 80 km/h (von Anfang an),
+  Kukirin G4 mit 105 km/h (300 Münzen) und Dualtron X Limited mit 125 km/h
+  (1200 Münzen).
 * **Münzen** gibt es für jeden sauber gelandeten Wheelie: 2 pro Meter plus die
   Trick-Punkte.
 * **Tuning** für jeden Scooter einzeln, 4 Teile mit je 3 Stufen:
@@ -24,7 +25,7 @@ gleicher Burnout und Boost).
   | Akku | +2 km/h und stärkerer Boost |
   | Reifen | +2 km/h und bessere Bremse |
 
-  Voll getunt: Ninebot 133 km/h, Kukirin 142 km/h, Dualtron 154 km/h.
+  Voll getunt: Ninebot 113 km/h, Kukirin 147 km/h, Dualtron 179 km/h.
 * **12 Farben** pro Scooter (auch Regenbogen), der Helm bekommt die gleiche Farbe.
 * **Bessere Grafik:** alles wird scharf in der Auflösung vom Handy gezeichnet,
   der Hintergrund bewegt sich in mehreren Ebenen (Wolken, Hochhäuser, Häuser,
