@@ -2,6 +2,12 @@
 
 Ein Wheelie-Spiel für den **Adafruit PyBadge** und **PyBadge LC**.
 
+> **Neu: das Spiel gibt es jetzt auch für Roblox!** Als 3D-Spiel mit Rampen,
+> Tricks, Blitzern und Farben-Shop, zusammen mit Freunden spielbar, auch auf
+> dem Handy. Alles dazu steht in [`roblox/`](roblox/README.md).
+>
+> ![Roblox-Version](roblox/docs/trick_seite.png)
+
 Die aktuelle Version ist ein **MakeCode-Arcade-Spiel**: Sie wird in echte
 Maschinensprache übersetzt und läuft deshalb viel flüssiger als die erste
 Version in CircuitPython (die liegt noch im Ordner [`circuitpython/`](circuitpython/)).

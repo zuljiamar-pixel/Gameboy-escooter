@@ -1,0 +1,3448 @@
+<roblox version="4">
+  <Item class="Players" referent="0">
+    <Properties>
+      <string name="Name">Players</string>
+      <bool name="CharacterAutoLoads">false</bool>
+    </Properties>
+  </Item>
+  <Item class="ReplicatedStorage" referent="1">
+    <Properties>
+      <string name="Name">ReplicatedStorage</string>
+    </Properties>
+    <Item class="Folder" referent="2">
+      <Properties>
+        <string name="Name">Wheelie</string>
+      </Properties>
+      <Item class="ModuleScript" referent="3">
+        <Properties>
+          <string name="Name">Einstellungen</string>
+          <string name="Source"><![CDATA[--[[
+	E-SCOOTER WHEELIE - EINSTELLUNGEN
+	Hier kannst du das Spiel leichter oder schwerer machen.
+	Die meisten Werte sind die gleichen wie in der PyBadge-Version.
+]]
+
+local Einstellungen = {
+	-- Tempo
+	MAX_KMH = 100, -- Höchstgeschwindigkeit mit Gas
+	CRUISE_KMH = 25, -- so schnell rollt der Scooter von allein
+	ACCEL = 6, -- Beschleunigung mit Gas (m/s²)
+	CRUISE_ACCEL = 3, -- Beschleunigung von allein
+	COAST_DECEL = 1.5, -- Ausrollen ohne Gas
+	BRAKE_DECEL = 7, -- Bremsen
+	LAUNCH_BOOST = 5, -- Extra-Schub nach einem Burnout
+	LENKEN = 5, -- so schnell fährst du zur Seite (m/s)
+
+	-- Wheelie
+	POP = 1.8, -- wie kräftig die Wheelie-Taste das Vorderrad hochreißt
+	BALANCE_DEG = 42, -- Gleichgewichtspunkt des Wheelies
+	CRASH_DEG = 68, -- ab hier kippst du nach hinten um
+	GRAVITY = 4, -- wie stark das Vorderrad nach unten will
+	LIFT = 6.5, -- wie stark Gas das Vorderrad hochzieht
+	BRAKE_TORQUE = 6, -- wie stark die Bremse es runterdrückt
+	DAMPING = 1.8, -- Dämpfung (höher = gutmütiger)
+	LAND_TORQUE = 5, -- sanftes Landen mit nochmal Wheelie-Taste
+	LAND_SPEED = 1.6,
+	MIN_WHEELIE = 0.5, -- so viele Meter muss ein Wheelie mindestens haben
+
+	-- Sprung
+	JUMP_GRAVITY = 9, -- Schwerkraft beim Sprung (m/s²)
+	MAX_JUMP = 6, -- höchste Absprung-Geschwindigkeit nach oben (m/s)
+
+	-- Punkte
+	COIN_VALUE = 10, -- Punkte pro Münze
+	BLITZ_KMH = 60, -- ab diesem Tempo blitzt der Blitzer
+	RUNDEN_BONUS = 100, -- Punkte für eine ganze Runde
+
+	-- Welt
+	DAY_LENGTH = 300, -- so viele Sekunden dauert ein ganzer Tag
+	STRECKE_M = 1500, -- so lang ist die Straße (Meter), danach geht es von vorne los
+	STRASSE_BREITE = 40, -- Breite der Straße in Studs
+	STUDS_PRO_M = 3.5, -- 1 Meter = 3.5 Studs
+	SEED = 2024, -- eine andere Zahl ergibt eine andere Strecke
+
+	-- Maße vom Scooter (Studs). Nur ändern, wenn du auch das Modell änderst.
+	SCOOTER = {
+		RADSTAND = 4.2, -- Abstand Hinterrad - Vorderrad
+		RAD = 0.9, -- Radius der Räder
+		DECK = 1.05, -- Höhe vom Trittbrett
+		FUSS_X = 1.9, -- hier stehen die Füße (von der Hinterachse aus)
+	},
+}
+
+return Einstellungen
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="4">
+        <Properties>
+          <string name="Name">Farben</string>
+          <string name="Source"><![CDATA[-- Scooter-Farben für den Farben-Shop (die gleichen wie auf dem PyBadge)
+return {
+	{ name = "Mint", preis = 0, farbe = Color3.fromRGB(25, 194, 160) },
+	{ name = "Blau", preis = 100, farbe = Color3.fromRGB(47, 125, 225) },
+	{ name = "Pink", preis = 250, farbe = Color3.fromRGB(255, 95, 162) },
+	{ name = "Neon", preis = 500, farbe = Color3.fromRGB(157, 255, 58) },
+	{ name = "Feuer-Rot", preis = 750, farbe = Color3.fromRGB(232, 50, 43) },
+	{ name = "Schwarz", preis = 1000, farbe = Color3.fromRGB(58, 58, 70) },
+	{ name = "Gold", preis = 2000, farbe = Color3.fromRGB(255, 200, 61) },
+	{ name = "Regenbogen", preis = 5000, farbe = Color3.fromRGB(255, 80, 80), regenbogen = true },
+}
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="5">
+        <Properties>
+          <string name="Name">Physik</string>
+          <string name="Source"><![CDATA[--[[
+	Wheelie-Physik (wie in der PyBadge-Version).
+	Rechnet nur mit Zahlen, damit man sie auch ohne Roblox testen kann.
+
+	z.v      Geschwindigkeit (m/s)
+	z.th     Wheelie-Winkel (rad), 0 = Vorderrad auf dem Boden
+	z.om     Drehgeschwindigkeit (rad/s)
+	z.wmode  Wheelie-Mode an
+	z.landing sanft landen
+	z.arms   0 = beide Hände, 1 = Einhänder, 2 = No-Hander
+	z.crouch in die Knie
+	z.boostT Turbo nach dem Burnout (Sekunden)
+	z.wt     Dauer des aktuellen Wheelies (s)
+	z.t      Zeit (s)
+]]
+
+local Physik = {}
+
+local CTRL = { 1, 0.75, 0.45 } -- Kontrolle mit 2 / 1 / 0 Händen
+local WOBBLE = { 0, 0.6, 1.5 }
+
+function Physik.neu()
+	return {
+		v = 0,
+		th = 0,
+		om = 0,
+		wmode = false,
+		landing = false,
+		arms = 0,
+		crouch = false,
+		boostT = 0,
+		wt = 0,
+		t = 0,
+	}
+end
+
+-- Ein kleiner Schritt. Gibt true zurück, wenn das Vorderrad gerade (wieder) auf dem Boden ist.
+function Physik.schritt(z, dt, gas, bremse, E)
+	local VMAX = E.MAX_KMH / 3.6
+	local CRUISE = E.CRUISE_KMH / 3.6
+	local PHI0 = math.rad(90 - E.BALANCE_DEG)
+
+	local vv = z.v
+	if bremse then
+		vv -= E.BRAKE_DECEL * dt * (if z.th > 0 then 0.4 else 1)
+	elseif gas then
+		local f = vv / VMAX
+		vv += E.ACCEL * dt * (1 - 0.6 * f * f)
+		if z.boostT > 0 then
+			vv += E.LAUNCH_BOOST * dt
+		end
+	elseif vv < CRUISE then
+		vv = math.min(CRUISE, vv + E.CRUISE_ACCEL * dt)
+	else
+		vv = math.max(CRUISE, vv - E.COAST_DECEL * dt)
+	end
+	z.v = math.clamp(vv, 0, VMAX)
+
+	local damp = E.DAMPING * (if z.crouch and z.wmode then 1.6 else 1)
+	local a = -E.GRAVITY * math.cos(PHI0 + z.th) - damp * z.om
+	if z.landing then
+		a -= E.LAND_TORQUE
+	elseif z.wmode then
+		local c = CTRL[z.arms + 1]
+		if gas then
+			a += E.LIFT * c * math.min(1, z.v / 2)
+		end
+		if bremse and z.th > 0 then
+			a -= E.BRAKE_TORQUE * c
+		end
+		a += WOBBLE[z.arms + 1] * math.sin(z.t * 6.3)
+		-- je länger der Wheelie dauert, desto unruhiger wird er (Windböen)
+		a += math.min(1.2, z.wt * 0.02) * math.sin(z.t * 2.3 + 3 * math.sin(z.t * 0.7))
+	end
+	z.om += a * dt
+	if z.landing and z.om < -E.LAND_SPEED then
+		z.om = -E.LAND_SPEED
+	end
+	z.th += z.om * dt
+	if z.th <= 0 then
+		z.th = 0
+		if z.om < 0 then
+			z.om = 0
+			return true
+		end
+	end
+	return false
+end
+
+-- Mehrere kleine Schritte (genauer bei wenig FPS)
+function Physik.schritte(z, dt, gas, bremse, E)
+	local gelandet = false
+	local n = math.floor(dt / 0.01) + 1
+	local h = dt / n
+	for _ = 1, n do
+		z.t += h
+		if Physik.schritt(z, h, gas, bremse, E) then
+			gelandet = true
+		end
+	end
+	return gelandet
+end
+
+return Physik
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="ServerScriptService" referent="6">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="7">
+      <Properties>
+        <string name="Name">WheelieServer</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[--[[
+	E-SCOOTER WHEELIE - Server
+	* baut die Straße
+	* gibt jedem Spieler einen Scooter
+	* speichert Punkte, Rekorde und gekaufte Farben (DataStore)
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataStoreService = game:GetService("DataStoreService")
+local PhysicsService = game:GetService("PhysicsService")
+
+local Shared = ReplicatedStorage:WaitForChild("Wheelie")
+local E = require(Shared:WaitForChild("Einstellungen"))
+local Farben = require(Shared:WaitForChild("Farben"))
+local Welt = require(script:WaitForChild("Welt"))
+local Scooter = require(script:WaitForChild("Scooter"))
+
+Players.CharacterAutoLoads = false
+
+-- Fahrer stoßen sich nicht gegenseitig um
+pcall(function()
+	PhysicsService:RegisterCollisionGroup("Fahrer")
+end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("Fahrer", "Fahrer", false)
+end)
+
+-- ------------------------------------------------------------------
+-- Remotes (Verbindung zu den Spielern)
+-- ------------------------------------------------------------------
+local remotes = Instance.new("Folder")
+remotes.Name = "Remotes"
+local function remote(klasse, name)
+	local r = Instance.new(klasse)
+	r.Name = name
+	r.Parent = remotes
+	return r
+end
+local evPunkte = remote("RemoteEvent", "Punkte")
+local evRekord = remote("RemoteEvent", "Rekord")
+local evZustand = remote("RemoteEvent", "Zustand")
+local fnShop = remote("RemoteFunction", "Shop")
+remotes.Parent = Shared
+
+-- ------------------------------------------------------------------
+-- Welt
+-- ------------------------------------------------------------------
+Welt.licht()
+Welt.bauen()
+
+local scooterOrdner = Instance.new("Folder")
+scooterOrdner.Name = "Scooters"
+scooterOrdner.Parent = workspace
+
+-- ------------------------------------------------------------------
+-- Spielstand
+-- ------------------------------------------------------------------
+local store = nil
+do
+	local ok, res = pcall(function()
+		return DataStoreService:GetDataStore("EScooterWheelie_v1")
+	end)
+	if ok then
+		store = res
+	else
+		warn("DataStore geht nicht (in Studio: Game Settings > Security > API Services einschalten):", res)
+	end
+end
+
+local daten = {} -- [Player] = Spielstand
+local scooters = {} -- [Player] = Scooter-Modell
+
+local function neueDaten()
+	return { punkte = 0, farben = 1, farbe = 1, rekord = 0, trick = 0, blitz = 0 }
+end
+
+local function besitzt(d, i)
+	return bit32.band(d.farben, bit32.lshift(1, i - 1)) ~= 0
+end
+
+local function laden(player)
+	local d = neueDaten()
+	if store then
+		for versuch = 1, 3 do
+			local ok, res = pcall(function()
+				return store:GetAsync("spieler_" .. player.UserId)
+			end)
+			if ok then
+				if type(res) == "table" then
+					for k in d do
+						if type(res[k]) == "number" then
+							d[k] = res[k]
+						end
+					end
+				end
+				break
+			end
+			warn("Laden fehlgeschlagen (Versuch " .. versuch .. "):", res)
+			task.wait(1)
+		end
+	end
+	d.farben = bit32.bor(d.farben, 1)
+	if not Farben[d.farbe] or not besitzt(d, d.farbe) then
+		d.farbe = 1
+	end
+	return d
+end
+
+local function speichern(player)
+	local d = daten[player]
+	if not d or not store or not d.geaendert then
+		return
+	end
+	d.geaendert = false
+	local kopie = {
+		punkte = d.punkte,
+		farben = d.farben,
+		farbe = d.farbe,
+		rekord = d.rekord,
+		trick = d.trick,
+		blitz = d.blitz,
+	}
+	local ok, err = pcall(function()
+		store:SetAsync("spieler_" .. player.UserId, kopie)
+	end)
+	if not ok then
+		d.geaendert = true
+		warn("Speichern fehlgeschlagen:", err)
+	end
+end
+
+-- Spielstand an den Spieler und an die Bestenliste geben
+local function zeigen(player)
+	local d = daten[player]
+	if not d then
+		return
+	end
+	player:SetAttribute("Punkte", d.punkte)
+	player:SetAttribute("Farben", d.farben)
+	player:SetAttribute("Farbe", d.farbe)
+	player:SetAttribute("Rekord", d.rekord)
+	player:SetAttribute("TrickRekord", d.trick)
+	player:SetAttribute("BlitzRekord", d.blitz)
+	local ls = player:FindFirstChild("leaderstats")
+	if ls then
+		ls.Punkte.Value = d.punkte
+		ls.Rekord.Value = math.floor(d.rekord * 10 + 0.5) / 10
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Scooter für jeden Spieler
+-- ------------------------------------------------------------------
+local function onCharacter(player, character)
+	local alt = scooters[player]
+	if alt then
+		alt:Destroy()
+		scooters[player] = nil
+	end
+	local hrp = character:WaitForChild("HumanoidRootPart", 10)
+	local hum = character:WaitForChild("Humanoid", 10)
+	if not hrp or not hum or character.Parent == nil then
+		return
+	end
+
+	local function gruppe(obj)
+		if obj:IsA("BasePart") then
+			obj.CollisionGroup = "Fahrer"
+		end
+	end
+	for _, obj in character:GetDescendants() do
+		gruppe(obj)
+	end
+	character.DescendantAdded:Connect(gruppe)
+
+	local model = Scooter.bauen(E)
+	model.Name = "Scooter_" .. player.Name
+	model:SetAttribute("Spieler", player.UserId)
+	model:SetAttribute("Zustand", 0)
+	local pos = hrp.Position
+	model:PivotTo(CFrame.new(pos.X, E.SCOOTER.RAD, pos.Z))
+	model.Parent = scooterOrdner
+	local d = daten[player]
+	Scooter.faerben(model, if d then d.farbe else 1, Farben)
+	pcall(function()
+		model.PrimaryPart:SetNetworkOwner(player)
+	end)
+	scooters[player] = model
+
+	local link = Instance.new("ObjectValue")
+	link.Name = "Scooter"
+	link.Value = model
+	link.Parent = character
+
+	hum.Died:Connect(function()
+		task.wait(3)
+		if player.Parent and player.Character == character then
+			player:LoadCharacter()
+		end
+	end)
+	character.AncestryChanged:Connect(function(_, parent)
+		if parent == nil and scooters[player] == model then
+			model:Destroy()
+			scooters[player] = nil
+		end
+	end)
+end
+
+local function onPlayer(player)
+	local d = laden(player)
+	if not player.Parent then
+		return
+	end
+	daten[player] = d
+
+	local ls = Instance.new("Folder")
+	ls.Name = "leaderstats"
+	local p = Instance.new("IntValue")
+	p.Name = "Punkte"
+	p.Parent = ls
+	local r = Instance.new("NumberValue")
+	r.Name = "Rekord"
+	r.Parent = ls
+	ls.Parent = player
+	zeigen(player)
+
+	player.CharacterAdded:Connect(function(c)
+		onCharacter(player, c)
+	end)
+	player:LoadCharacter()
+end
+
+Players.PlayerAdded:Connect(onPlayer)
+for _, p in Players:GetPlayers() do
+	task.spawn(onPlayer, p)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	speichern(player)
+	daten[player] = nil
+	if scooters[player] then
+		scooters[player]:Destroy()
+		scooters[player] = nil
+	end
+end)
+
+game:BindToClose(function()
+	local offen = 0
+	for _, player in Players:GetPlayers() do
+		offen += 1
+		task.spawn(function()
+			speichern(player)
+			offen -= 1
+		end)
+	end
+	local start = os.clock()
+	while offen > 0 and os.clock() - start < 20 do
+		task.wait(0.1)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(60)
+		for _, player in Players:GetPlayers() do
+			speichern(player)
+		end
+	end
+end)
+
+-- ------------------------------------------------------------------
+-- Nachrichten von den Spielern
+-- ------------------------------------------------------------------
+local function zahl(n)
+	return type(n) == "number" and n == n and n > -math.huge and n < math.huge
+end
+
+evPunkte.OnServerEvent:Connect(function(player, n)
+	local d = daten[player]
+	if not d or not zahl(n) or n <= 0 then
+		return
+	end
+	d.punkte += math.floor(math.min(n, 20000))
+	d.geaendert = true
+	zeigen(player)
+end)
+
+evRekord.OnServerEvent:Connect(function(player, art, wert)
+	local d = daten[player]
+	if not d or not zahl(wert) then
+		return
+	end
+	if art == "wheelie" and wert > d.rekord and wert < 1000000 then
+		d.rekord = wert
+	elseif art == "trick" and wert > d.trick and wert < 10000000 then
+		d.trick = math.floor(wert)
+	elseif art == "blitz" and wert > d.blitz and wert <= 250 then
+		d.blitz = math.floor(wert)
+	else
+		return
+	end
+	d.geaendert = true
+	zeigen(player)
+end)
+
+evZustand.OnServerEvent:Connect(function(player, bits)
+	local model = scooters[player]
+	if model and zahl(bits) then
+		model:SetAttribute("Zustand", math.clamp(math.floor(bits), 0, 255))
+	end
+end)
+
+fnShop.OnServerInvoke = function(player, aktion, i)
+	local d = daten[player]
+	if not d or not zahl(i) then
+		return false, "?"
+	end
+	i = math.floor(i)
+	local f = Farben[i]
+	if not f then
+		return false, "?"
+	end
+	if not besitzt(d, i) then
+		if aktion ~= "kaufen" then
+			return false, "Noch nicht gekauft"
+		end
+		if d.punkte < f.preis then
+			return false, "Zu wenig Punkte! Dir fehlen noch " .. (f.preis - d.punkte) .. "."
+		end
+		d.punkte -= f.preis
+		d.farben = bit32.bor(d.farben, bit32.lshift(1, i - 1))
+		d.farbe = i
+		d.geaendert = true
+		zeigen(player)
+		if scooters[player] then
+			Scooter.faerben(scooters[player], i, Farben)
+		end
+		task.spawn(speichern, player)
+		return true, f.name .. " gekauft!"
+	end
+	d.farbe = i
+	d.geaendert = true
+	zeigen(player)
+	if scooters[player] then
+		Scooter.faerben(scooters[player], i, Farben)
+	end
+	return true, f.name .. " ausgewählt"
+end
+]]></string>
+      </Properties>
+      <Item class="ModuleScript" referent="8">
+        <Properties>
+          <string name="Name">Scooter</string>
+          <string name="Source"><![CDATA[--[[
+	Baut das E-Scooter-Modell.
+	Das Modell schaut in Richtung +X. Der Ursprung ist da, wo das Hinterrad
+	die Straße berührt. Das unsichtbare Teil "Root" sitzt in der Hinterachse,
+	alle anderen Teile sind daran festgeschweißt.
+]]
+
+local Scooter = {}
+
+local SCHWARZ = Color3.fromRGB(24, 24, 28)
+local GRAU = Color3.fromRGB(125, 128, 138)
+local DUNKEL = Color3.fromRGB(55, 57, 64)
+local MINT = Color3.fromRGB(25, 194, 160)
+
+local function teil(model, root, name, size, cf, farbe, material, form, lack)
+	local p = Instance.new("Part")
+	p.Name = name
+	if form then
+		p.Shape = form
+	end
+	p.Size = size
+	p.CFrame = cf
+	p.Color = farbe
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Anchored = false
+	p.CanCollide = false
+	p.CanTouch = false
+	p.CanQuery = false
+	p.Massless = true
+	if lack then
+		p:SetAttribute("Lack", true)
+	end
+	p.Parent = model
+	local w = Instance.new("WeldConstraint")
+	w.Part0 = root
+	w.Part1 = p
+	w.Parent = p
+	return p
+end
+
+-- schräges Teil von Punkt a nach Punkt b (in der X/Y-Ebene)
+local function stange(model, root, name, a, b, dicke, farbe, material, lack)
+	local mitte = (a + b) / 2
+	local laenge = (b - a).Magnitude
+	local winkel = math.atan2(b.Y - a.Y, b.X - a.X) - math.pi / 2
+	return teil(
+		model,
+		root,
+		name,
+		Vector3.new(dicke, laenge, dicke),
+		CFrame.new(mitte) * CFrame.Angles(0, 0, winkel),
+		farbe,
+		material,
+		nil,
+		lack
+	)
+end
+
+function Scooter.bauen(E)
+	local S = E.SCOOTER
+	local WB, R, DECK = S.RADSTAND, S.RAD, S.DECK
+
+	local model = Instance.new("Model")
+	model.Name = "Scooter"
+
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(0.4, 0.4, 0.4)
+	root.CFrame = CFrame.new(0, R, 0)
+	root.Transparency = 1
+	root.Anchored = false
+	root.CanCollide = true
+	root.CanTouch = false
+	root.CanQuery = false
+	root.CollisionGroup = "Fahrer"
+	root.Parent = model
+	model.PrimaryPart = root
+
+	-- Räder: Zylinder liegen quer zur Fahrtrichtung
+	local quer = CFrame.Angles(0, math.pi / 2, 0)
+	for _, rx in { 0, WB } do
+		teil(model, root, "Rad", Vector3.new(0.55, 2 * R, 2 * R), CFrame.new(rx, R, 0) * quer, SCHWARZ, nil, Enum.PartType.Cylinder)
+		teil(model, root, "Felge", Vector3.new(0.6, R * 0.9, R * 0.9), CFrame.new(rx, R, 0) * quer, GRAU, Enum.Material.Metal, Enum.PartType.Cylinder)
+	end
+
+	-- Trittbrett
+	teil(model, root, "Deck", Vector3.new(3.4, 0.3, 1.2), CFrame.new(1.95, DECK - 0.2, 0), MINT, nil, nil, true)
+	teil(model, root, "Griptape", Vector3.new(3.1, 0.06, 1.0), CFrame.new(1.95, DECK - 0.03, 0), SCHWARZ)
+	teil(model, root, "Akku", Vector3.new(2.6, 0.25, 0.9), CFrame.new(1.95, DECK - 0.45, 0), DUNKEL)
+
+	-- Schutzblech und Rücklicht
+	teil(model, root, "Schutzblech", Vector3.new(1.5, 0.16, 0.62), CFrame.new(-0.05, 2 * R + 0.12, 0), MINT, nil, nil, true)
+	teil(model, root, "Ruecklicht", Vector3.new(0.14, 0.22, 0.5), CFrame.new(-0.8, 2 * R + 0.02, 0), Color3.fromRGB(255, 40, 40), Enum.Material.Neon)
+	stange(model, root, "Halter", Vector3.new(0.1, DECK - 0.1, 0), Vector3.new(-0.3, 2 * R + 0.05, 0), 0.22, MINT, nil, true)
+
+	-- Lenkstange: von vorne unten schräg nach hinten oben
+	local unten = Vector3.new(WB - 0.15, DECK, 0)
+	local oben = Vector3.new(WB - 0.6, 4.5, 0)
+	stange(model, root, "Hals", Vector3.new(3.55, DECK - 0.2, 0), unten, 0.5, MINT, nil, true)
+	stange(model, root, "Lenkstange", unten, oben, 0.34, MINT, nil, true)
+	stange(model, root, "Gabel", Vector3.new(WB, R, 0), unten + Vector3.new(0, 0.2, 0), 0.3, DUNKEL, Enum.Material.Metal)
+
+	-- Lenker mit Griffen
+	teil(model, root, "Lenker", Vector3.new(0.24, 0.24, 2.6), CFrame.new(oben), DUNKEL, Enum.Material.Metal)
+	for _, gz in { -1.15, 1.15 } do
+		teil(model, root, "Griff", Vector3.new(0.32, 0.32, 0.55), CFrame.new(oben.X, oben.Y, gz), SCHWARZ)
+	end
+	teil(model, root, "Display", Vector3.new(0.3, 0.12, 0.5), CFrame.new(oben.X - 0.05, oben.Y + 0.16, 0), SCHWARZ)
+
+	-- Scheinwerfer (die Vorderseite der Lampe zeigt nach vorne = +X)
+	local lampenHoehe = 3.7
+	local t = (lampenHoehe - unten.Y) / (oben.Y - unten.Y)
+	local lampeX = unten.X + (oben.X - unten.X) * t + 0.25
+	local lampe = teil(
+		model,
+		root,
+		"Scheinwerfer",
+		Vector3.new(0.45, 0.4, 0.2),
+		CFrame.new(lampeX, lampenHoehe, 0) * CFrame.Angles(0, -math.pi / 2, 0),
+		Color3.fromRGB(255, 250, 220),
+		Enum.Material.Neon
+	)
+	local licht = Instance.new("SpotLight")
+	licht.Face = Enum.NormalId.Front
+	licht.Angle = 55
+	licht.Range = 40
+	licht.Brightness = 2
+	licht.Shadows = false
+	licht.Color = Color3.fromRGB(255, 245, 220)
+	licht.Parent = lampe
+
+	-- Rauch für den Burnout (am Hinterrad)
+	local auspuff = Instance.new("Attachment")
+	auspuff.Name = "RauchPunkt"
+	auspuff.Position = Vector3.new(-0.4, -R + 0.25, 0)
+	auspuff.Parent = root
+	local rauch = Instance.new("ParticleEmitter")
+	rauch.Name = "Rauch"
+	rauch.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	rauch.Rate = 40
+	rauch.Lifetime = NumberRange.new(0.8, 1.4)
+	rauch.Speed = NumberRange.new(3, 7)
+	rauch.SpreadAngle = Vector2.new(35, 35)
+	rauch.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 5.5) })
+	rauch.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
+	rauch.Color = ColorSequence.new(Color3.fromRGB(225, 225, 225))
+	rauch.Acceleration = Vector3.new(0, 2.5, 0)
+	rauch.RotSpeed = NumberRange.new(-40, 40)
+	rauch.Rotation = NumberRange.new(0, 360)
+	rauch.EmissionDirection = Enum.NormalId.Top
+	rauch.Enabled = false
+	rauch.Parent = auspuff
+
+	return model
+end
+
+-- Scooter umfärben (index = Nummer in Farben)
+function Scooter.faerben(model, index, Farben)
+	local f = Farben[index] or Farben[1]
+	model:SetAttribute("Farbe", index)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and p:GetAttribute("Lack") then
+			p.Color = f.farbe
+		end
+	end
+end
+
+return Scooter
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="9">
+        <Properties>
+          <string name="Name">Welt</string>
+          <string name="Source"><![CDATA[--[[
+	Baut die Wheelie-Straße: eine lange gerade Straße in Richtung +X mit
+	Häusern, Laternen, Bäumen, Rampen, Münzen, Gullydeckeln und Blitzern.
+
+	Am Ende der Straße geht es wieder von vorne los. Damit man den Sprung
+	nicht sieht, wird der Anfang der Strecke hinter dem Ende noch einmal
+	aufgebaut (und das Ende vor dem Anfang). Diese Kopien sind nur Deko.
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+
+local E = require(ReplicatedStorage:WaitForChild("Wheelie"):WaitForChild("Einstellungen"))
+
+local Welt = {}
+
+local M = E.STUDS_PRO_M
+local LEN = E.STRECKE_M * M
+local HALB = E.STRASSE_BREITE / 2
+local GEHWEG = 12
+local HAUS_Z = HALB + GEHWEG + 2
+local VOR = 1300 -- so weit wird der Anfang hinter dem Ende kopiert
+local ZURUECK = 300 -- so weit das Ende vor dem Anfang
+local SPUREN = { -HALB * 0.75, -HALB * 0.25, HALB * 0.25, HALB * 0.75 }
+
+local ASPHALT = Color3.fromRGB(58, 58, 64)
+local GEHWEG_FARBE = Color3.fromRGB(168, 166, 160)
+local WEISS = Color3.fromRGB(240, 240, 240)
+local GELB = Color3.fromRGB(255, 205, 60)
+local GOLD = Color3.fromRGB(255, 196, 40)
+local FENSTER_TAG = Color3.fromRGB(62, 92, 124)
+local LAMPE_AUS = Color3.fromRGB(205, 205, 200)
+
+local HAUSFARBEN = {
+	Color3.fromRGB(214, 196, 168),
+	Color3.fromRGB(186, 92, 70),
+	Color3.fromRGB(235, 222, 196),
+	Color3.fromRGB(152, 164, 178),
+	Color3.fromRGB(204, 150, 96),
+	Color3.fromRGB(120, 140, 112),
+	Color3.fromRGB(226, 186, 120),
+	Color3.fromRGB(176, 120, 110),
+	Color3.fromRGB(96, 116, 146),
+	Color3.fromRGB(238, 236, 228),
+	Color3.fromRGB(240, 170, 150),
+	Color3.fromRGB(140, 190, 200),
+}
+local MARKISEN = {
+	Color3.fromRGB(200, 40, 50),
+	Color3.fromRGB(30, 120, 80),
+	Color3.fromRGB(40, 90, 170),
+	Color3.fromRGB(240, 160, 30),
+}
+
+local ordner = {}
+
+local function neuerOrdner(name, parent)
+	local f = Instance.new("Folder")
+	f.Name = name
+	f.Parent = parent
+	return f
+end
+
+-- Ein festes Teil bauen. o = { size, cf, farbe, material, form, parent, name, deko, schatten }
+local function teil(o)
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	if o.form then
+		p.Shape = o.form
+	end
+	p.Size = o.size
+	p.CFrame = o.cf
+	p.Color = o.farbe
+	p.Material = o.material or Enum.Material.SmoothPlastic
+	if o.deko then
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+	end
+	if o.schatten == false then
+		p.CastShadow = false
+	end
+	if o.name then
+		p.Name = o.name
+	end
+	p.Parent = o.parent or ordner.Deko
+	return p
+end
+
+local SENKRECHT = CFrame.Angles(0, 0, math.pi / 2) -- Zylinder aufstellen
+
+-- f(x, kopie) für die echte Stelle und für die Kopien am Anfang/Ende aufrufen
+local function ueberall(x, f)
+	f(x, false)
+	if x < VOR then
+		f(x + LEN, true)
+	end
+	if x > LEN - ZURUECK then
+		f(x - LEN, true)
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Straße, Gehwege, Linien
+-- ------------------------------------------------------------------
+local function strasse()
+	local von, bis = -ZURUECK - 300, LEN + VOR + 300
+	local x = von
+	while x < bis do
+		local len = math.min(500, bis - x)
+		local mx = x + len / 2
+		teil({
+			size = Vector3.new(len, 2, HALB * 2),
+			cf = CFrame.new(mx, -1, 0),
+			farbe = ASPHALT,
+			material = Enum.Material.Asphalt,
+			parent = ordner.Boden,
+			name = "Strasse",
+		})
+		for _, s in { -1, 1 } do
+			teil({
+				size = Vector3.new(len, 1.6, GEHWEG),
+				cf = CFrame.new(mx, -0.2, s * (HALB + GEHWEG / 2)),
+				farbe = GEHWEG_FARBE,
+				material = Enum.Material.Concrete,
+				parent = ordner.Boden,
+				name = "Gehweg",
+			})
+			teil({
+				size = Vector3.new(len, 1, 400),
+				cf = CFrame.new(mx, -0.9, s * (HALB + GEHWEG + 200)),
+				farbe = Color3.fromRGB(86, 112, 70),
+				material = Enum.Material.Grass,
+				deko = true,
+			})
+			teil({
+				size = Vector3.new(len, 0.05, 0.45),
+				cf = CFrame.new(mx, 0.025, s * (HALB - 0.9)),
+				farbe = WEISS,
+				deko = true,
+				schatten = false,
+			})
+		end
+		x += len
+	end
+
+	-- gestrichelte Linien (Abstand passt genau in die Strecke, damit es beim Sprung gleich aussieht)
+	local abstand = LEN / math.floor(LEN / 22 + 0.5)
+	local i = math.floor(von / abstand)
+	while i * abstand < bis do
+		local dx = i * abstand
+		for _, lz in { -HALB / 2, 0, HALB / 2 } do
+			teil({
+				size = Vector3.new(9, 0.05, if lz == 0 then 0.5 else 0.35),
+				cf = CFrame.new(dx + 4.5, 0.025, lz),
+				farbe = if lz == 0 then GELB else WEISS,
+				deko = true,
+				schatten = false,
+			})
+		end
+		i += 1
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Häuser
+-- ------------------------------------------------------------------
+local function fenster(size, cf, licht, immer)
+	local f = teil({
+		size = size,
+		cf = cf,
+		farbe = FENSTER_TAG,
+		material = Enum.Material.Glass,
+		parent = ordner.Fenster,
+		deko = true,
+		schatten = false,
+		name = "Fenster",
+	})
+	f:SetAttribute("Licht", licht or immer or false)
+	return f
+end
+
+local function haus(h, x, seite)
+	local rng = Random.new(h.seed)
+	local zMitte = seite * (HAUS_Z + h.d / 2)
+	local fz = seite * (HAUS_Z - 0.1) -- Fenster sitzen auf der Seite zur Straße
+	teil({
+		size = Vector3.new(h.w, h.h, h.d),
+		cf = CFrame.new(x, h.h / 2 - 0.5, zMitte),
+		farbe = h.farbe,
+		material = h.material,
+		parent = ordner.Gebaeude,
+		name = "Haus",
+	})
+	teil({
+		size = Vector3.new(h.w + 1, 1.2, h.d + 1),
+		cf = CFrame.new(x, h.h + 0.1, zMitte),
+		farbe = h.farbe:Lerp(Color3.new(0, 0, 0), 0.35),
+		parent = ordner.Gebaeude,
+		deko = true,
+	})
+
+	local reihen = math.clamp(math.floor((h.h - 8) / 10), 1, 8)
+	local start = 1
+	if h.typ == 3 then
+		-- Laden unten: großes Schaufenster und Markise
+		fenster(Vector3.new(h.w - 8, 6.5, 0.3), CFrame.new(x, 4.2, fz), true, true)
+		teil({
+			size = Vector3.new(h.w - 6, 0.4, 3.2),
+			cf = CFrame.new(x, 8.4, seite * (HAUS_Z - 1.6)) * CFrame.Angles(-seite * 0.25, 0, 0),
+			farbe = MARKISEN[rng:NextInteger(1, #MARKISEN)],
+			material = Enum.Material.Fabric,
+			deko = true,
+		})
+		start = 2
+	end
+	if h.typ == 2 or h.typ == 3 then
+		-- Fensterbänder
+		for r = start, reihen do
+			fenster(Vector3.new(h.w - 5, 4.2, 0.3), CFrame.new(x, r * 10 - 4, fz), rng:NextNumber() < 0.7)
+		end
+	else
+		-- einzelne Fenster und eine Tür
+		local spalten = math.clamp(math.floor((h.w - 6) / 9), 1, 4)
+		local breite = (h.w - 6) / spalten
+		for r = 1, reihen do
+			for c = 1, spalten do
+				local wx = x - h.w / 2 + 3 + breite * (c - 0.5)
+				if r == 1 and c == math.ceil(spalten / 2) then
+					teil({
+						size = Vector3.new(3.6, 7, 0.3),
+						cf = CFrame.new(wx, 3.0, fz),
+						farbe = Color3.fromRGB(92, 62, 44),
+						material = Enum.Material.Wood,
+						deko = true,
+					})
+				else
+					fenster(Vector3.new(4, 5, 0.3), CFrame.new(wx, r * 10 - 4, fz), rng:NextNumber() < 0.6)
+				end
+			end
+		end
+	end
+end
+
+local function haeuser(rng)
+	for _, seite in { -1, 1 } do
+		local liste = {}
+		local x = 0
+		while x < LEN - 30 do
+			local w = math.min(rng:NextInteger(28, 56), LEN - x)
+			local r = rng:NextNumber()
+			table.insert(liste, {
+				x = x + w / 2,
+				w = w,
+				h = rng:NextInteger(24, 110),
+				d = rng:NextInteger(26, 44),
+				farbe = HAUSFARBEN[rng:NextInteger(1, #HAUSFARBEN)],
+				material = if rng:NextNumber() < 0.3 then Enum.Material.Brick else Enum.Material.SmoothPlastic,
+				typ = if r < 0.45 then 2 elseif r < 0.8 then 1 else 3,
+				seed = rng:NextInteger(1, 1000000),
+			})
+			x += w + rng:NextInteger(2, 8)
+		end
+		for _, h in liste do
+			ueberall(h.x, function(px)
+				haus(h, px, seite)
+			end)
+		end
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Laternen und Bäume
+-- ------------------------------------------------------------------
+local function laterne(x, seite)
+	local z = seite * (HALB + 1.6)
+	teil({
+		form = Enum.PartType.Cylinder,
+		size = Vector3.new(15, 0.6, 0.6),
+		cf = CFrame.new(x, 0.6 + 7.5, z) * SENKRECHT,
+		farbe = Color3.fromRGB(60, 64, 70),
+		material = Enum.Material.Metal,
+		deko = true,
+	})
+	teil({
+		size = Vector3.new(0.4, 0.4, 3.2),
+		cf = CFrame.new(x, 15.6, z - seite * 1.4),
+		farbe = Color3.fromRGB(60, 64, 70),
+		material = Enum.Material.Metal,
+		deko = true,
+	})
+	local kopf = teil({
+		size = Vector3.new(1.4, 0.5, 2.4),
+		cf = CFrame.new(x, 15.45, z - seite * 3.0),
+		farbe = LAMPE_AUS,
+		parent = ordner.Lampen,
+		deko = true,
+		name = "Leuchte",
+	})
+	local licht = Instance.new("SpotLight")
+	licht.Face = Enum.NormalId.Bottom
+	licht.Angle = 120
+	licht.Range = 36
+	licht.Brightness = 3
+	licht.Color = Color3.fromRGB(255, 214, 150)
+	licht.Shadows = false
+	licht.Enabled = false
+	licht.Parent = kopf
+end
+
+local function baum(x, seite, nummer)
+	local rng = Random.new(E.SEED * 7 + nummer * 2 + (if seite > 0 then 1 else 0))
+	local z = seite * (HALB + GEHWEG - 3.5)
+	local h = 6 + rng:NextNumber() * 3
+	teil({
+		form = Enum.PartType.Cylinder,
+		size = Vector3.new(h, 1.2, 1.2),
+		cf = CFrame.new(x, 0.6 + h / 2, z) * SENKRECHT,
+		farbe = Color3.fromRGB(110, 76, 50),
+		material = Enum.Material.Wood,
+		deko = true,
+	})
+	local gruen = Color3.fromRGB(60, 140, 60):Lerp(Color3.fromRGB(120, 170, 50), rng:NextNumber())
+	teil({
+		form = Enum.PartType.Ball,
+		size = Vector3.one * (7 + rng:NextNumber() * 3),
+		cf = CFrame.new(x, 0.6 + h + 2.5, z),
+		farbe = gruen,
+		material = Enum.Material.Grass,
+		deko = true,
+	})
+end
+
+local function strassenrand()
+	local abstand = 70
+	local n = math.floor(LEN / abstand)
+	abstand = LEN / n
+	for k = 0, n - 1 do
+		for _, seite in { -1, 1 } do
+			ueberall(k * abstand + 20, function(px)
+				laterne(px, seite)
+			end)
+			ueberall(k * abstand + 20 + abstand / 2, function(px)
+				baum(px, seite, k)
+			end)
+		end
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Dinge auf der Straße
+-- ------------------------------------------------------------------
+local function muenze(pos, kopie)
+	teil({
+		form = Enum.PartType.Cylinder,
+		size = Vector3.new(0.4, 2.6, 2.6),
+		cf = CFrame.new(pos),
+		farbe = GOLD,
+		material = Enum.Material.Neon,
+		parent = if kopie then ordner.Deko else ordner.Muenzen,
+		deko = true,
+		schatten = false,
+		name = "Muenze",
+	})
+end
+
+local function gully(x, z, kopie)
+	teil({
+		form = Enum.PartType.Cylinder,
+		size = Vector3.new(0.12, 4.2, 4.2),
+		cf = CFrame.new(x, 0.03, z) * SENKRECHT,
+		farbe = Color3.fromRGB(40, 40, 44),
+		material = Enum.Material.DiamondPlate,
+		parent = if kopie then ordner.Deko else ordner.Gullys,
+		deko = true,
+		schatten = false,
+		name = "Gully",
+	})
+end
+
+local function rampe(x, z, gross, kopie)
+	local L = (if gross then 8 else 5) * M -- Länge
+	local H = (if gross then 2.4 else 1.4) * M -- Höhe
+	local W = 12 -- Breite
+	local t = 0.8 -- Dicke vom Brett
+	local a = math.atan2(H, L)
+	-- Oberseite vom Brett geht genau von (x, 0) bis (x + L, H)
+	local brett = teil({
+		size = Vector3.new(math.sqrt(L * L + H * H), t, W),
+		cf = CFrame.new(x + L / 2 + math.sin(a) * t / 2, H / 2 - math.cos(a) * t / 2, z) * CFrame.Angles(0, 0, a),
+		farbe = if gross then Color3.fromRGB(230, 90, 40) else Color3.fromRGB(196, 140, 84),
+		material = Enum.Material.WoodPlanks,
+		parent = if kopie then ordner.Deko else ordner.Boden,
+		name = "Rampe",
+	})
+	if kopie then
+		brett.CanQuery = false
+	end
+	-- Stützen
+	teil({
+		size = Vector3.new(0.8, H - 0.3, W - 0.6),
+		cf = CFrame.new(x + L - 0.6, (H - 0.3) / 2, z),
+		farbe = Color3.fromRGB(70, 70, 76),
+		material = Enum.Material.Metal,
+		deko = true,
+	})
+	for _, sz in { -1, 1 } do
+		teil({
+			size = Vector3.new(0.5, H * 0.5, 0.5),
+			cf = CFrame.new(x + L * 0.5, H * 0.25, z + sz * (W / 2 - 0.6)),
+			farbe = Color3.fromRGB(70, 70, 76),
+			material = Enum.Material.Metal,
+			deko = true,
+		})
+	end
+	-- gelbe Kante oben
+	teil({
+		size = Vector3.new(0.4, 0.1, W),
+		cf = CFrame.new(x + L - 0.2, H + 0.02, z),
+		farbe = GELB,
+		material = Enum.Material.Neon,
+		deko = true,
+		schatten = false,
+	})
+	-- Münzbogen hinter der Rampe (passt für ca. 55 bzw. 70 km/h)
+	local v = (if gross then 70 else 55) / 3.6
+	local vy = math.min(v * math.tan(a), E.MAX_JUMP)
+	for i = 1, 5 do
+		local d = i * (if gross then 4 else 3) -- Meter nach der Rampe
+		local zeit = d / v
+		local hoehe = H + (vy * zeit - 0.5 * E.JUMP_GRAVITY * zeit * zeit) * M
+		if hoehe > 1.5 then
+			muenze(Vector3.new(x + L + d * M, hoehe + 3, z), kopie)
+		end
+	end
+end
+
+local function schild(part, face, text)
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = face
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 40
+	sg.LightInfluence = 0
+	sg.Parent = part
+	local kreis = Instance.new("Frame")
+	kreis.Size = UDim2.fromScale(0.9, 0.9)
+	kreis.Position = UDim2.fromScale(0.05, 0.05)
+	kreis.BackgroundColor3 = Color3.new(1, 1, 1)
+	kreis.Parent = sg
+	local ecke = Instance.new("UICorner")
+	ecke.CornerRadius = UDim.new(0.5, 0)
+	ecke.Parent = kreis
+	local rand = Instance.new("UIStroke")
+	rand.Color = Color3.fromRGB(220, 30, 30)
+	rand.Thickness = 10
+	rand.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	rand.Parent = kreis
+	local zahl = Instance.new("TextLabel")
+	zahl.BackgroundTransparency = 1
+	zahl.Size = UDim2.fromScale(1, 1)
+	zahl.Font = Enum.Font.FredokaOne
+	zahl.TextScaled = true
+	zahl.Text = text
+	zahl.TextColor3 = Color3.new(0, 0, 0)
+	zahl.Parent = kreis
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0.2, 0)
+	pad.PaddingBottom = UDim.new(0.2, 0)
+	pad.PaddingLeft = UDim.new(0.15, 0)
+	pad.PaddingRight = UDim.new(0.15, 0)
+	pad.Parent = zahl
+end
+
+local function blitzer(x, kopie)
+	local model = Instance.new("Model")
+	model.Name = "Blitzer"
+	local z = HALB + 3.5
+	local function t(o)
+		o.parent = model
+		o.deko = true
+		return teil(o)
+	end
+	t({
+		form = Enum.PartType.Cylinder,
+		size = Vector3.new(9.5, 0.7, 0.7),
+		cf = CFrame.new(x, 0.6 + 4.75, z) * SENKRECHT,
+		farbe = Color3.fromRGB(230, 230, 230),
+		material = Enum.Material.Metal,
+	})
+	for i = 1, 3 do
+		t({
+			form = Enum.PartType.Cylinder,
+			size = Vector3.new(0.7, 0.78, 0.78),
+			cf = CFrame.new(x, 0.6 + i * 1.6, z) * SENKRECHT,
+			farbe = Color3.fromRGB(210, 30, 30),
+		})
+	end
+	local kasten = t({
+		size = Vector3.new(1.8, 2.6, 2.8),
+		cf = CFrame.new(x, 11.3, z),
+		farbe = Color3.fromRGB(70, 72, 78),
+		material = Enum.Material.Metal,
+		name = "Kasten",
+	})
+	t({
+		size = Vector3.new(0.2, 1.1, 1.1),
+		cf = CFrame.new(x - 0.95, 11.1, z - 0.5),
+		farbe = Color3.fromRGB(10, 10, 14),
+		material = Enum.Material.Glass,
+	})
+	local blitz = t({
+		size = Vector3.new(0.2, 0.5, 1.9),
+		cf = CFrame.new(x - 0.95, 12.25, z),
+		farbe = Color3.fromRGB(255, 255, 240),
+		material = Enum.Material.Neon,
+		name = "Blitz",
+	})
+	local licht = Instance.new("PointLight")
+	licht.Range = 45
+	licht.Brightness = 10
+	licht.Color = Color3.fromRGB(255, 255, 255)
+	licht.Shadows = false
+	licht.Enabled = false
+	licht.Parent = blitz
+	-- Schild "60" am Mast, gut sichtbar für die Fahrer
+	local tafel = t({
+		size = Vector3.new(0.15, 3.2, 3.2),
+		cf = CFrame.new(x - 0.45, 7.4, z),
+		farbe = Color3.fromRGB(235, 235, 235),
+	})
+	tafel.Transparency = 1
+	schild(tafel, Enum.NormalId.Left, tostring(E.BLITZ_KMH))
+	model.PrimaryPart = kasten
+	model.Parent = if kopie then ordner.Deko else ordner.Blitzer
+end
+
+local function tor(x)
+	for _, s in { -1, 1 } do
+		teil({
+			size = Vector3.new(2.5, 21, 2.5),
+			cf = CFrame.new(x, 10.5, s * (HALB + 2)),
+			farbe = Color3.fromRGB(220, 40, 40),
+			deko = true,
+		})
+	end
+	local balken = teil({
+		size = Vector3.new(2, 4, HALB * 2 + 7),
+		cf = CFrame.new(x, 21, 0),
+		farbe = WEISS,
+		deko = true,
+	})
+	for _, face in { Enum.NormalId.Left, Enum.NormalId.Right } do
+		local sg = Instance.new("SurfaceGui")
+		sg.Face = face
+		sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		sg.PixelsPerStud = 20
+		sg.LightInfluence = 0
+		sg.Parent = balken
+		local spalten = 24
+		for i = 0, spalten - 1 do
+			for j = 0, 1 do
+				local f = Instance.new("Frame")
+				f.BorderSizePixel = 0
+				f.Size = UDim2.fromScale(1 / spalten, 0.5)
+				f.Position = UDim2.fromScale(i / spalten, j * 0.5)
+				f.BackgroundColor3 = if (i + j) % 2 == 0 then Color3.new(0, 0, 0) else Color3.new(1, 1, 1)
+				f.Parent = sg
+			end
+		end
+		local schrift = Instance.new("TextLabel")
+		schrift.AnchorPoint = Vector2.new(0.5, 0.5)
+		schrift.Position = UDim2.fromScale(0.5, 0.5)
+		schrift.Size = UDim2.fromScale(0.45, 0.8)
+		schrift.BackgroundColor3 = Color3.new(1, 1, 1)
+		schrift.BorderSizePixel = 0
+		schrift.Font = Enum.Font.FredokaOne
+		schrift.TextScaled = true
+		schrift.Text = "START  ZIEL"
+		schrift.TextColor3 = Color3.new(0, 0, 0)
+		schrift.ZIndex = 2
+		schrift.Parent = sg
+	end
+end
+
+local function ereignisse()
+	local rng = Random.new(E.SEED)
+	local s = 45 -- Meter
+	while s < E.STRECKE_M - 50 do
+		local r = rng:NextInteger(0, 99)
+		local gap = rng:NextInteger(14, 26)
+		local spur = SPUREN[rng:NextInteger(1, #SPUREN)]
+		local x = s * M
+		if r < 20 then
+			ueberall(x, function(px, kopie)
+				gully(px, spur, kopie)
+			end)
+			if rng:NextNumber() < 0.4 then
+				local spur2 = SPUREN[rng:NextInteger(1, #SPUREN)]
+				ueberall(x + 9, function(px, kopie)
+					gully(px, spur2, kopie)
+				end)
+			end
+		elseif r < 42 then
+			-- Münzen am Boden
+			for i = 0, 4 do
+				ueberall(x + i * 0.8 * M, function(px, kopie)
+					muenze(Vector3.new(px, 2.6, spur), kopie)
+				end)
+			end
+			gap += 4
+		elseif r < 56 then
+			-- hohe Münzen: nur im Wheelie erreichbar
+			for i = 0, 3 do
+				ueberall(x + i * 1.2 * M, function(px, kopie)
+					muenze(Vector3.new(px, 10, spur), kopie)
+				end)
+			end
+			gap += 5
+		elseif r < 80 then
+			ueberall(x, function(px, kopie)
+				rampe(px, spur, false, kopie)
+			end)
+			gap += 14
+		elseif r < 88 then
+			ueberall(x, function(px, kopie)
+				rampe(px, spur, true, kopie)
+			end)
+			gap += 20
+		else
+			ueberall(x, function(px, kopie)
+				blitzer(px, kopie)
+			end)
+			gap += 4
+		end
+		s += gap
+	end
+end
+
+-- ------------------------------------------------------------------
+function Welt.bauen()
+	local alt = workspace:FindFirstChild("Strecke")
+	if alt then
+		alt:Destroy()
+	end
+	local strecke = Instance.new("Folder")
+	strecke.Name = "Strecke"
+	strecke:SetAttribute("Laenge", LEN)
+	for _, name in { "Boden", "Deko", "Gebaeude", "Fenster", "Lampen", "Muenzen", "Gullys", "Blitzer" } do
+		ordner[name] = neuerOrdner(name, strecke)
+	end
+
+	local rng = Random.new(E.SEED + 1)
+	strasse()
+	haeuser(rng)
+	strassenrand()
+	ueberall(0, function(px)
+		tor(px)
+	end)
+	ereignisse()
+
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "Start"
+	spawn.Anchored = true
+	spawn.Size = Vector3.new(8, 0.2, 8)
+	spawn.CFrame = CFrame.new(18, 0.1, 0)
+	spawn.Transparency = 1
+	spawn.CanCollide = false
+	spawn.CanQuery = false
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Parent = strecke
+
+	strecke.Parent = workspace
+	strecke:SetAttribute("Fertig", true)
+	return strecke
+end
+
+function Welt.licht()
+	Lighting.ClockTime = 8
+	Lighting.Brightness = 2.2
+	Lighting.Ambient = Color3.fromRGB(70, 70, 82)
+	Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 142)
+	Lighting.GlobalShadows = true
+	for _, k in { "Atmosphere", "BloomEffect", "SunRaysEffect", "ColorCorrectionEffect" } do
+		local alt = Lighting:FindFirstChildOfClass(k)
+		if alt then
+			alt:Destroy()
+		end
+	end
+	local atm = Instance.new("Atmosphere")
+	atm.Density = 0.36
+	atm.Offset = 0.15
+	atm.Color = Color3.fromRGB(199, 206, 222)
+	atm.Decay = Color3.fromRGB(110, 116, 132)
+	atm.Glare = 0.25
+	atm.Haze = 1.4
+	atm.Parent = Lighting
+	local bloom = Instance.new("BloomEffect")
+	bloom.Intensity = 0.7
+	bloom.Size = 28
+	bloom.Threshold = 1.3
+	bloom.Parent = Lighting
+	local rays = Instance.new("SunRaysEffect")
+	rays.Intensity = 0.06
+	rays.Spread = 0.8
+	rays.Parent = Lighting
+	local cc = Instance.new("ColorCorrectionEffect")
+	cc.Saturation = 0.12
+	cc.Contrast = 0.05
+	cc.Parent = Lighting
+	-- Uhrzeit rechnet jeder Spieler selbst aus (siehe Steuerung)
+	Lighting:SetAttribute("TagStart", workspace:GetServerTimeNow())
+end
+
+return Welt
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="10">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="11">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="LocalScript" referent="12">
+        <Properties>
+          <string name="Name">WheelieClient</string>
+          <string name="Source"><![CDATA[--[[
+	E-SCOOTER WHEELIE - Steuerung (läuft bei jedem Spieler)
+
+	W / Pfeil hoch   = Gas (im Wheelie: Vorderrad höher)
+	S / Pfeil runter = Bremse (im Wheelie: Vorderrad runter)
+	A / D            = lenken
+	LEERTASTE        = Wheelie an / nochmal = sauber landen
+	W + S            = Burnout (S loslassen = Turbo-Start)
+	Q / E / C        = Einhänder / No-Hander / in die Knie
+	F = Farben-Shop, V = Kamera, H = Hilfe
+	Handy: Stick zum Lenken und große Knöpfe rechts.
+	Controller: RT Gas, LT Bremse, A Wheelie, X/Y/B Tricks, Steuerkreuz hoch = Shop, runter = Kamera
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+
+local player = Players.LocalPlayer
+local Shared = ReplicatedStorage:WaitForChild("Wheelie")
+local E = require(Shared:WaitForChild("Einstellungen"))
+local Farben = require(Shared:WaitForChild("Farben"))
+local Physik = require(Shared:WaitForChild("Physik"))
+local Remotes = Shared:WaitForChild("Remotes")
+local HUD = require(script:WaitForChild("HUD"))
+local Posen = require(script:WaitForChild("Posen"))
+local Toene = require(script:WaitForChild("Toene"))
+
+local M = E.STUDS_PRO_M
+local LEN = E.STRECKE_M * M
+local HALB = E.STRASSE_BREITE / 2
+local WB = E.SCOOTER.RADSTAND
+local RAD = E.SCOOTER.RAD
+local DECK = E.SCOOTER.DECK
+local FUSS_X = E.SCOOTER.FUSS_X
+local VMAX = E.MAX_KMH / 3.6
+local CRASH_RAD = math.rad(E.CRASH_DEG)
+local STUFE = 2.2 -- so hohe Kanten fährt man einfach hoch
+local KANTE = 0.6 -- fällt der Boden mehr ab, ist man in der Luft
+local GELB = Color3.fromRGB(255, 214, 64)
+local WEISS = Color3.new(1, 1, 1)
+
+local hud = HUD.neu(player, Farben, E, UserInputService.TouchEnabled)
+
+-- ------------------------------------------------------------------
+-- Strecke einlesen
+-- ------------------------------------------------------------------
+local strecke = workspace:WaitForChild("Strecke")
+if not strecke:GetAttribute("Fertig") then
+	strecke:GetAttributeChangedSignal("Fertig"):Wait()
+end
+local boden = strecke:WaitForChild("Boden")
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Include
+rayParams.FilterDescendantsInstances = { boden }
+
+local muenzen = {}
+local blitzer = {}
+local gullys = {}
+local fenster = {}
+local lampen = {}
+
+local function streckeEinlesen()
+	table.clear(muenzen)
+	for _, p in strecke:WaitForChild("Muenzen"):GetChildren() do
+		if p:IsA("BasePart") then
+			table.insert(muenzen, {
+				teil = p,
+				x = p.Position.X,
+				y = p.Position.Y,
+				z = p.Position.Z,
+				cf = p.CFrame,
+				size = p.Size,
+				weg = false,
+			})
+		end
+	end
+	table.sort(muenzen, function(a, b)
+		return a.x < b.x
+	end)
+	table.clear(blitzer)
+	for _, b in strecke:WaitForChild("Blitzer"):GetChildren() do
+		local blitz = b:FindFirstChild("Blitz")
+		if blitz then
+			table.insert(blitzer, { x = blitz.Position.X, licht = blitz:FindFirstChildOfClass("PointLight") })
+		end
+	end
+	table.clear(gullys)
+	for _, g in strecke:WaitForChild("Gullys"):GetChildren() do
+		if g:IsA("BasePart") then
+			table.insert(gullys, { x = g.Position.X, z = g.Position.Z })
+		end
+	end
+	fenster = strecke:WaitForChild("Fenster"):GetChildren()
+	lampen = strecke:WaitForChild("Lampen"):GetChildren()
+end
+streckeEinlesen()
+
+local function bodenHoehe(x, zz, yRef)
+	local res = workspace:Raycast(Vector3.new(x, yRef + 6, zz), Vector3.new(0, -80, 0), rayParams)
+	if res then
+		return res.Position.Y
+	end
+	return 0
+end
+
+-- ------------------------------------------------------------------
+-- Zustand der Fahrt
+-- ------------------------------------------------------------------
+local z = Physik.neu()
+local modus = "fahren" -- "fahren" oder "sturz"
+local xw, zl, y = 20, 0, 0 -- Position vom Hinterrad (x längs, zl quer, y Höhe)
+local vy, air, airT, jp = 0, false, 0, 0
+local pitchBoden, pitchLuft = 0, 0
+local lenkVis = 0
+local inWheelie, wd, tp, combo, trickT = false, 0, 0, 0, 0
+local burn, burnT = false, 0
+local sturzT, sturzFall = 0, 0
+local wackelT, wackelStark = 0, 0
+local hopT = 0
+local flaggeS, flaggeDone = -1, true
+local runde = 0
+local offen, unterwegs, sendT = 0, 0, 0
+local lokalRekord = 0
+local muenzIdx = 1
+local muenzSerie, muenzSerieT = 0, 0
+local spin = 0
+
+local char, hum, hrp, scooterRoot = nil, nil, nil, nil
+local hipOffset = 3
+local bereit = false
+
+local kameraModus = 1
+local camPos = nil
+local kameraNamen = { "Kamera: hinten", "Kamera: von der Seite", "Kamera: von vorne" }
+
+local function fmt1(x)
+	return string.format("%.1f", x)
+end
+
+local function rekord()
+	return math.max(player:GetAttribute("Rekord") or 0, lokalRekord)
+end
+
+local function kontoStand()
+	return (player:GetAttribute("Punkte") or 0) + offen + unterwegs
+end
+
+local function punkte(n)
+	n = math.floor(n)
+	if n > 0 then
+		offen += n
+		hud:konto(kontoStand())
+	end
+end
+
+local function wackeln(t, stark)
+	wackelT = math.max(wackelT, t)
+	wackelStark = math.max(if wackelT > 0 then wackelStark else 0, stark)
+end
+
+-- ------------------------------------------------------------------
+-- Tricks
+-- ------------------------------------------------------------------
+local TRICK_NAMEN = { [0] = "", "EINHÄNDER", "NO-HANDER" }
+local TRICK_WERT = { [0] = 0, 1, 3 }
+
+local function trickId()
+	return z.arms + (if z.crouch then 3 else 0)
+end
+
+local function trickName()
+	local n = TRICK_NAMEN[z.arms]
+	if z.crouch then
+		return if n ~= "" then "KNIE-" .. n else "IN DIE KNIE"
+	end
+	return n
+end
+
+local function trickRate()
+	local r = TRICK_WERT[z.arms] + (if z.crouch then 1 else 0)
+	return if z.arms > 0 and z.crouch then r * 2 else r
+end
+
+local function comboMult()
+	local n = 1
+	for i = 1, 5 do
+		if bit32.band(combo, bit32.lshift(1, i)) ~= 0 then
+			n += 1
+		end
+	end
+	return math.max(1, n - 1)
+end
+
+local function zustandsBits()
+	local b = 0
+	if z.arms == 1 then
+		b += 1
+	elseif z.arms == 2 then
+		b += 2
+	end
+	if z.crouch then
+		b += 4
+	end
+	if burn then
+		b += 8
+	end
+	if modus == "sturz" then
+		b += 16
+	end
+	return b
+end
+
+local letzteBits = -1
+local function sendeZustand()
+	local b = zustandsBits()
+	if b ~= letzteBits then
+		letzteBits = b
+		Remotes.Zustand:FireServer(b)
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Rekord-Fahne (nur du siehst sie): bis hier wäre der Wheelie ein neuer Rekord
+-- ------------------------------------------------------------------
+local flagge = Instance.new("Model")
+flagge.Name = "RekordFahne"
+local fahnenMast = Instance.new("Part")
+fahnenMast.Size = Vector3.new(0.3, 10, 0.3)
+fahnenMast.Color = Color3.fromRGB(230, 230, 230)
+fahnenMast.Material = Enum.Material.Metal
+fahnenMast.Parent = flagge
+local fahnenTuch = Instance.new("Part")
+fahnenTuch.Size = Vector3.new(3.2, 2, 0.1)
+fahnenTuch.Color = Color3.fromRGB(230, 30, 40)
+fahnenTuch.Material = Enum.Material.Neon
+fahnenTuch.Parent = flagge
+for _, p in { fahnenMast, fahnenTuch } do
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+end
+
+local function flaggeSetzen(x)
+	x = x % LEN
+	fahnenMast.CFrame = CFrame.new(x, 5.6, HALB + 1)
+	fahnenTuch.CFrame = CFrame.new(x + 1.75, 9.4, HALB + 1)
+	flagge.Parent = workspace
+end
+
+local function flaggeWeg()
+	flagge.Parent = nil
+end
+
+-- Konfetti bei einem neuen Rekord
+local konfettiTeil = Instance.new("Part")
+konfettiTeil.Name = "Konfetti"
+konfettiTeil.Anchored = true
+konfettiTeil.CanCollide = false
+konfettiTeil.CanQuery = false
+konfettiTeil.CanTouch = false
+konfettiTeil.Transparency = 1
+konfettiTeil.Size = Vector3.new(4, 1, 4)
+konfettiTeil.Parent = workspace
+local konfetti = Instance.new("ParticleEmitter")
+konfetti.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+konfetti.Rate = 0
+konfetti.Lifetime = NumberRange.new(1.2, 2)
+konfetti.Speed = NumberRange.new(14, 26)
+konfetti.SpreadAngle = Vector2.new(60, 60)
+konfetti.Acceleration = Vector3.new(0, -25, 0)
+konfetti.Size = NumberSequence.new(0.6)
+konfetti.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 60, 60)),
+	ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 220, 40)),
+	ColorSequenceKeypoint.new(0.66, Color3.fromRGB(60, 220, 120)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 140, 255)),
+})
+konfetti.LightEmission = 0.6
+konfetti.EmissionDirection = Enum.NormalId.Top
+konfetti.Parent = konfettiTeil
+
+local function konfettiWerfen(n)
+	konfettiTeil.CFrame = CFrame.new(xw + 6, y + 6, zl)
+	konfetti:Emit(n)
+end
+
+-- ------------------------------------------------------------------
+-- Ereignisse der Fahrt
+-- ------------------------------------------------------------------
+local function neustart()
+	local alt = z
+	z = Physik.neu()
+	z.t = alt.t
+	modus = "fahren"
+	inWheelie, wd, tp, combo, trickT = false, 0, 0, 0, 0
+	burn, burnT = false, 0
+	air, vy, airT, jp = false, 0, 0, 0
+	pitchBoden, pitchLuft = 0, 0
+	y = bodenHoehe(xw, zl, y + 2)
+	flaggeWeg()
+	hud:bannerWeg()
+	hud:balanceZeigen(false, 0)
+	sendeZustand()
+end
+
+local function sturz(warum)
+	modus = "sturz"
+	inWheelie = false
+	z.wmode = false
+	z.landing = false
+	burn = false
+	flaggeWeg()
+	sturzT, sturzFall = 0, 0
+	wackeln(0.45, 1.3)
+	local text = warum
+	if text == "" then
+		text = if wd >= E.MIN_WHEELIE then fmt1(wd) .. " m ZÄHLT NICHT" else "AUTSCH!"
+	end
+	hud:banner("GESTÜRZT!", text, WEISS, 99)
+	hud:balanceZeigen(false, 0)
+	Toene.spielen("sturz")
+	sendeZustand()
+end
+
+local function wheelieEnde()
+	inWheelie = false
+	flaggeWeg()
+	if wd < E.MIN_WHEELIE then
+		hud:bannerWegWennFest()
+		return
+	end
+	if wd > rekord() then
+		lokalRekord = wd
+		Remotes.Rekord:FireServer("wheelie", wd)
+		hud:banner(fmt1(wd) .. " m", "NEUER REKORD!", GELB, 3)
+		hud:rekord(wd)
+		Toene.spielen("rekord")
+		konfettiWerfen(70)
+	else
+		local wort = if wd < 10
+			then "OK!"
+			elseif wd < 30 then "NICE!"
+			elseif wd < 80 then "STARK!"
+			elseif wd < 200 then "MEGA!"
+			elseif wd < 500 then "WAHNSINN!"
+			else "LEGENDE!"
+		hud:banner(fmt1(wd) .. " m", wort .. "  " .. fmt1(z.wt) .. " s", GELB, 3)
+		Toene.spielen("muenze", 0.8)
+	end
+	-- 1 Punkt pro Meter Wheelie, dazu die Trick-Punkte
+	punkte(wd)
+	local pts = math.floor(tp)
+	if pts > 0 then
+		punkte(pts)
+		if pts > (player:GetAttribute("TrickRekord") or 0) then
+			Remotes.Rekord:FireServer("trick", pts)
+			hud:toast("TRICK-REKORD " .. pts .. "!")
+		else
+			hud:toast("TRICKS +" .. pts)
+		end
+	end
+end
+
+local function landen()
+	air = false
+	vy = 0
+	hopT = 0.12
+	if airT < 0.3 then
+		return -- nur ein kleiner Hüpfer
+	end
+	wackeln(0.15, 0.35)
+	if z.arms == 2 then
+		sturz("OHNE HÄNDE GELANDET!")
+		return
+	end
+	local pts = math.floor(jp)
+	punkte(pts)
+	Toene.spielen("landen")
+	if inWheelie then
+		hud:toast("SPRUNG! +" .. pts)
+	else
+		hud:banner("+" .. pts .. " P", "SAUBER GELANDET!", GELB, 2)
+	end
+end
+
+local function muenzeNehmen(m)
+	m.weg = true
+	local p = m.teil
+	TweenService:Create(p, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		CFrame = m.cf + Vector3.new(0, 4, 0),
+		Size = m.size * 0.3,
+		Transparency = 1,
+	}):Play()
+	punkte(E.COIN_VALUE)
+	if muenzSerieT > 0 then
+		muenzSerie = math.min(muenzSerie + 1, 10)
+	else
+		muenzSerie = 0
+	end
+	muenzSerieT = 0.6
+	Toene.spielen("muenze", 1 + muenzSerie * 0.08)
+end
+
+local function muenzenZurueck()
+	for _, m in muenzen do
+		if m.weg then
+			m.weg = false
+			m.teil.Size = m.size
+			m.teil.Transparency = 0
+			m.teil.CFrame = m.cf
+		end
+	end
+	muenzIdx = 1
+end
+
+local function geblitzt(b, kmh)
+	hud:blitz()
+	Toene.spielen("blitz")
+	if b.licht then
+		b.licht.Enabled = true
+		task.delay(0.15, function()
+			b.licht.Enabled = false
+		end)
+	end
+	punkte(kmh)
+	hud:toast("GEBLITZT! " .. kmh .. " km/h  +" .. kmh)
+	if kmh > (player:GetAttribute("BlitzRekord") or 0) then
+		Remotes.Rekord:FireServer("blitz", kmh)
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Eingabe
+-- ------------------------------------------------------------------
+local tasten = { ein = false, nohand = false, knie = false }
+local wheelieGedrueckt = false
+local controls = nil
+
+task.spawn(function()
+	local ok, pm = pcall(function()
+		return require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+	end)
+	if ok and pm then
+		controls = pm:GetControls()
+	end
+end)
+
+local function bewegungsVektor()
+	if controls then
+		local ok, v = pcall(function()
+			return controls:GetMoveVector()
+		end)
+		if ok and typeof(v) == "Vector3" then
+			return v
+		end
+	end
+	return Vector3.zero
+end
+
+local function taste(k)
+	return UserInputService:IsKeyDown(k)
+end
+
+local function padTaste(k)
+	return UserInputService:IsGamepadButtonDown(Enum.UserInputType.Gamepad1, k)
+end
+
+local function eingabe()
+	local gas, bremse, steer = false, false, 0
+	if UserInputService:GetFocusedTextBox() == nil then
+		gas = taste(Enum.KeyCode.W) or taste(Enum.KeyCode.Up)
+		bremse = taste(Enum.KeyCode.S) or taste(Enum.KeyCode.Down)
+		if taste(Enum.KeyCode.A) or taste(Enum.KeyCode.Left) then
+			steer -= 1
+		end
+		if taste(Enum.KeyCode.D) or taste(Enum.KeyCode.Right) then
+			steer += 1
+		end
+	end
+	if padTaste(Enum.KeyCode.ButtonR2) then
+		gas = true
+	end
+	if padTaste(Enum.KeyCode.ButtonL2) then
+		bremse = true
+	end
+	local mv = bewegungsVektor()
+	if steer == 0 and math.abs(mv.X) > 0.2 then
+		steer = math.clamp(mv.X, -1, 1)
+	end
+	if mv.Z < -0.6 then
+		gas = true
+	elseif mv.Z > 0.6 then
+		bremse = true
+	end
+	if hud.touch.gas then
+		gas = true
+	end
+	if hud.touch.bremse then
+		bremse = true
+	end
+	local r = {
+		gas = gas,
+		bremse = bremse,
+		steer = steer,
+		wheelie = wheelieGedrueckt,
+		ein = tasten.ein or hud.touch.ein,
+		nohand = tasten.nohand or hud.touch.nohand,
+		knie = tasten.knie or hud.touch.knie,
+	}
+	wheelieGedrueckt = false
+	if hud.shopOffen then
+		r.gas, r.bremse, r.steer, r.wheelie = false, true, 0, false
+		r.ein, r.nohand, r.knie = false, false, false
+	end
+	return r
+end
+
+-- ------------------------------------------------------------------
+-- Farben-Shop
+-- ------------------------------------------------------------------
+local function shopAktualisieren()
+	hud:shopAktualisieren(kontoStand(), player:GetAttribute("Farben") or 1, player:GetAttribute("Farbe") or 1)
+end
+
+local function shopUmschalten()
+	hud:shopZeigen(not hud.shopOffen)
+	if hud.shopOffen then
+		hud.shopWahl = player:GetAttribute("Farbe") or 1
+		hud:shopStatus("Klick auf eine Farbe zum Kaufen oder Auswählen.", true)
+		shopAktualisieren()
+	end
+end
+
+local kaufLaeuft = false
+local function kaufen(i)
+	if kaufLaeuft then
+		return
+	end
+	kaufLaeuft = true
+	-- erst die offenen Punkte zum Server schicken, damit sie mitzählen
+	if offen > 0 then
+		Remotes.Punkte:FireServer(offen)
+		unterwegs += offen
+		offen = 0
+	end
+	local besitz = player:GetAttribute("Farben") or 1
+	local aktion = if bit32.band(besitz, bit32.lshift(1, i - 1)) ~= 0 then "waehlen" else "kaufen"
+	local ok, gut, meldung = pcall(function()
+		return Remotes.Shop:InvokeServer(aktion, i)
+	end)
+	kaufLaeuft = false
+	if not ok then
+		hud:shopStatus("Das hat nicht geklappt, versuch es nochmal.", false)
+		return
+	end
+	hud:shopStatus(meldung or "", gut)
+	Toene.spielen(if gut then "kaufen" else "nein", if gut then 1.3 else 1)
+	shopAktualisieren()
+end
+hud.onKaufen = kaufen
+hud.onShop = shopUmschalten
+
+local function kameraWechseln()
+	kameraModus = kameraModus % #kameraNamen + 1
+	camPos = nil
+	hud:toast(kameraNamen[kameraModus])
+end
+hud.onKamera = kameraWechseln
+hud.onWheelie = function()
+	wheelieGedrueckt = true
+end
+
+-- Tasten (mit hoher Priorität, damit z.B. die Leertaste nicht springt)
+local PRIO = Enum.ContextActionPriority.High.Value + 10
+
+local function halten(name)
+	return function(_, state)
+		tasten[name] = state == Enum.UserInputState.Begin or state == Enum.UserInputState.Change
+		return Enum.ContextActionResult.Sink
+	end
+end
+
+ContextActionService:BindActionAtPriority("WheelieTaste", function(_, state)
+	if state == Enum.UserInputState.Begin then
+		if hud.shopOffen then
+			kaufen(hud.shopWahl)
+		else
+			wheelieGedrueckt = true
+		end
+	end
+	return Enum.ContextActionResult.Sink
+end, false, PRIO, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
+
+ContextActionService:BindActionAtPriority("TrickEinhaender", halten("ein"), false, PRIO, Enum.KeyCode.Q, Enum.KeyCode.ButtonX)
+ContextActionService:BindActionAtPriority("TrickNoHander", halten("nohand"), false, PRIO, Enum.KeyCode.E, Enum.KeyCode.ButtonY)
+ContextActionService:BindActionAtPriority(
+	"TrickKnie",
+	halten("knie"),
+	false,
+	PRIO,
+	Enum.KeyCode.C,
+	Enum.KeyCode.LeftControl,
+	Enum.KeyCode.ButtonB
+)
+
+local function einmal(f)
+	return function(_, state)
+		if state == Enum.UserInputState.Begin then
+			f()
+		end
+		return Enum.ContextActionResult.Sink
+	end
+end
+
+ContextActionService:BindActionAtPriority("Shop", einmal(shopUmschalten), false, PRIO, Enum.KeyCode.F, Enum.KeyCode.DPadUp)
+ContextActionService:BindActionAtPriority("Kamera", einmal(kameraWechseln), false, PRIO, Enum.KeyCode.V, Enum.KeyCode.DPadDown)
+ContextActionService:BindActionAtPriority("Hilfe", einmal(function()
+	hud:hilfeUmschalten()
+end), false, PRIO, Enum.KeyCode.H)
+
+-- im Shop mit Pfeilen / Steuerkreuz eine Farbe aussuchen
+UserInputService.InputBegan:Connect(function(input, verarbeitet)
+	if not hud.shopOffen or verarbeitet then
+		return
+	end
+	local k = input.KeyCode
+	if k == Enum.KeyCode.Left or k == Enum.KeyCode.A or k == Enum.KeyCode.DPadLeft then
+		hud:shopAuswahl(-1)
+		shopAktualisieren()
+	elseif k == Enum.KeyCode.Right or k == Enum.KeyCode.D or k == Enum.KeyCode.DPadRight then
+		hud:shopAuswahl(1)
+		shopAktualisieren()
+	elseif k == Enum.KeyCode.Return then
+		kaufen(hud.shopWahl)
+	elseif k == Enum.KeyCode.Escape then
+		hud:shopZeigen(false)
+	end
+end)
+
+-- ------------------------------------------------------------------
+-- Fahren
+-- ------------------------------------------------------------------
+-- seitwärts lenken, vorwärts fahren, Boden und Sprünge
+local function bewegen(dt, steer)
+	local lenkTempo = E.LENKEN * M * math.clamp(z.v / 4, 0.25, 1) * (if air then 0.5 else 1)
+	if modus ~= "fahren" then
+		steer = 0
+	end
+	local neuZ = math.clamp(zl + steer * lenkTempo * dt, -HALB + 2, HALB - 2)
+	lenkVis += (steer - lenkVis) * math.min(1, dt * 6)
+	local neuX = xw + z.v * M * dt
+
+	local g = bodenHoehe(neuX, neuZ, y)
+	if not air and g > y + STUFE then
+		-- seitlich gegen eine Rampe: nicht weiter zur Seite
+		neuZ = zl
+		g = bodenHoehe(neuX, neuZ, y)
+	end
+	xw, zl = neuX, neuZ
+
+	if air then
+		vy -= E.JUMP_GRAVITY * M * dt
+		y += vy * dt
+		airT += dt
+		if modus == "fahren" then
+			jp += dt * 20 * (1 + trickRate()) * comboMult()
+		end
+		pitchLuft += (-0.12 - pitchLuft) * math.min(1, dt * 1.2)
+		if y <= g then
+			y = g
+			pitchBoden = 0
+			if modus == "fahren" then
+				landen()
+			else
+				air = false
+				vy = 0
+			end
+		end
+	elseif y - g > KANTE then
+		-- abheben!
+		air = true
+		airT = 0
+		jp = 5
+		vy = math.max(0, math.min(z.v * math.tan(pitchBoden), E.MAX_JUMP)) * M
+		pitchLuft = pitchBoden
+		if vy > 3 * M then
+			Toene.spielen("sprung")
+		end
+	else
+		y = g
+		-- Neigung aus Hinter- und Vorderrad
+		local vorne = bodenHoehe(xw + WB, zl, y)
+		if vorne < y - KANTE then
+			vorne = y + math.tan(pitchBoden) * WB -- Vorderrad schon über der Kante
+		end
+		pitchBoden = math.atan2(vorne - y, WB)
+	end
+end
+
+local function ereignissePruefen(xVorher)
+	-- Gullydeckel
+	if not air then
+		for _, g in gullys do
+			if g.x > xVorher and g.x <= xw and math.abs(g.z - zl) < 2.6 then
+				hopT = 0.1
+				wackeln(0.12, 0.25)
+				if z.th > 0 then
+					z.om += (math.random() * 1.8 - 0.7) * (0.4 + 0.6 * z.v / VMAX)
+				end
+				Toene.spielen("gully")
+			end
+		end
+	end
+
+	-- Münzen
+	local oben = y + 7.5 + 4 * math.sin(z.th)
+	local unten = y - 1
+	local i = muenzIdx
+	while i <= #muenzen do
+		local m = muenzen[i]
+		if m.x > xw + WB + 2 then
+			break
+		end
+		if not m.weg and m.x > xVorher - 2 and math.abs(m.z - zl) < 3.2 and m.y <= oben and m.y >= unten then
+			muenzeNehmen(m)
+		end
+		i += 1
+	end
+	while muenzIdx <= #muenzen and muenzen[muenzIdx].x < xw - 4 do
+		muenzIdx += 1
+	end
+
+	-- Rekord-Fahne
+	if inWheelie and not flaggeDone and flaggeS > 0 and wd >= flaggeS then
+		flaggeDone = true
+		hud:toast("REKORD GEKNACKT!")
+		Toene.spielen("kaufen", 1.5)
+		konfettiWerfen(25)
+	end
+
+	-- Blitzer
+	for _, b in blitzer do
+		if b.x > xVorher and b.x <= xw then
+			local kmh = math.floor(z.v * 3.6 + 0.5)
+			if kmh >= E.BLITZ_KMH then
+				geblitzt(b, kmh)
+			end
+		end
+	end
+
+	-- Ende der Straße: wieder von vorne
+	if xw >= LEN then
+		xw -= LEN
+		runde += 1
+		muenzenZurueck()
+		punkte(E.RUNDEN_BONUS)
+		hud:toast("RUNDE " .. runde .. " GESCHAFFT!  +" .. E.RUNDEN_BONUS)
+		if camPos then
+			camPos -= Vector3.new(LEN, 0, 0)
+		end
+	end
+end
+
+local function updateFahren(dt, inp)
+	-- Wheelie-Taste
+	if inp.wheelie then
+		if not z.wmode then
+			z.wmode = true
+			z.landing = false
+			z.om += E.POP
+		elseif z.th > 0 then
+			z.landing = true
+		else
+			z.wmode = false
+		end
+	end
+
+	-- Tricks
+	local na = if inp.nohand then 2 elseif inp.ein then 1 else 0
+	local nc = inp.knie
+	if na ~= z.arms or nc ~= z.crouch then
+		z.arms = na
+		z.crouch = nc
+		trickT = 0
+		if (inWheelie or air) and trickId() > 0 then
+			Toene.spielen("trick")
+		end
+	end
+	if (inWheelie or air) and trickId() > 0 then
+		trickT += dt
+		local bit = bit32.lshift(1, trickId())
+		if trickT > 0.6 and bit32.band(combo, bit) == 0 then
+			combo = bit32.bor(combo, bit)
+			if comboMult() > 1 then
+				hud:toast("COMBO x" .. comboMult() .. "!")
+			end
+		end
+	end
+
+	-- Burnout
+	local nb = inp.gas and inp.bremse and not z.wmode and z.th == 0 and not air
+	if nb and not burn then
+		burnT = 0
+		hud:banner("BURNOUT!", "", GELB, 0)
+	elseif burn and not nb then
+		hud:bannerWegWennFest()
+		if inp.gas and burnT >= 1 then
+			z.boostT = 1.5
+			hud:toast("LAUNCH!")
+			Toene.spielen("launch", 0.8)
+		end
+	end
+	burn = nb
+	if burn then
+		burnT += dt
+		hud:banner("BURNOUT!", fmt1(burnT) .. " s", GELB, 0)
+	end
+	if z.boostT > 0 then
+		z.boostT -= dt
+	end
+
+	-- Physik
+	local gelandet = Physik.schritte(z, dt, inp.gas, inp.bremse, E)
+
+	if z.th > 0 and not inWheelie then
+		inWheelie = true
+		wd, tp = 0, 0
+		z.wt = 0
+		if not air then
+			combo = 0
+		end
+		hud:bannerWeg()
+		local best = rekord()
+		if best >= 3 then
+			flaggeS = best
+			flaggeDone = false
+			flaggeSetzen(xw + best * M)
+		else
+			flaggeS = -1
+			flaggeDone = true
+		end
+	end
+	if inWheelie then
+		wd += z.v * dt
+		z.wt += dt
+		tp += z.v * dt * trickRate() * comboMult()
+		local name = trickName()
+		hud:banner(
+			fmt1(wd) .. " m",
+			if name ~= "" then name .. "! +" .. math.floor(tp) else fmt1(z.wt) .. " s",
+			GELB,
+			0
+		)
+	end
+	if z.th >= CRASH_RAD then
+		sturz("")
+		return
+	end
+	if gelandet then
+		z.wmode = false
+		z.landing = false
+		if inWheelie then
+			wheelieEnde()
+		end
+	end
+
+	local xVorher = xw
+	bewegen(dt, inp.steer)
+	if modus ~= "fahren" then
+		return
+	end
+	ereignissePruefen(xVorher)
+	if modus ~= "fahren" then
+		return
+	end
+
+	if not inWheelie and not air and trickId() == 0 then
+		combo = 0
+	end
+	if air and not inWheelie and airT > 0.2 then
+		local name = trickName()
+		hud:banner("SPRUNG!", if name ~= "" then "AIR " .. name .. "! +" .. math.floor(jp) else "+" .. math.floor(jp), GELB, 0.3)
+	end
+	hud:balanceZeigen(z.wmode or z.th > 0, z.th / CRASH_RAD)
+end
+
+local function updateSturz(dt, inp)
+	sturzT += dt
+	local limit = math.rad(100)
+	if z.th < limit then
+		z.om += 6 * dt
+		z.th = math.min(z.th + z.om * dt, limit)
+	end
+	sturzFall = math.min(math.rad(85), sturzFall + dt * 4)
+	z.v = math.max(0, z.v - 7 * dt)
+	bewegen(dt, 0)
+	if (sturzT > 1.2 and (inp.gas or inp.wheelie)) or sturzT > 3.5 then
+		neustart()
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Zeichnen: Scooter und Fahrer an die richtige Stelle setzen
+-- ------------------------------------------------------------------
+local function zeichnen(dt)
+	if hopT > 0 then
+		hopT -= dt
+	end
+	local hop = if hopT > 0 then 0.25 else 0
+	local pitch = if air then pitchLuft else pitchBoden
+	local yaw = -lenkVis * 0.18
+	local roll = lenkVis * 0.22 * math.min(1, z.v / 6)
+	local basis = CFrame.new(xw, y + hop, zl) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(roll, 0, 0)
+	local scooterCF = basis * CFrame.Angles(0, 0, pitch + z.th)
+	local vel = Vector3.new(z.v * M, if air then vy else 0, 0)
+
+	if scooterRoot and scooterRoot.Parent then
+		scooterRoot.CFrame = scooterCF * CFrame.new(0, RAD, 0)
+		scooterRoot.AssemblyLinearVelocity = vel
+		scooterRoot.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	local fussCF, lehne
+	if modus == "sturz" then
+		-- nach hinten vom Scooter fallen
+		fussCF = basis * CFrame.new(FUSS_X - 1, DECK * 0.6, 0)
+		lehne = pitch + sturzFall
+	else
+		fussCF = CFrame.new(scooterCF * Vector3.new(FUSS_X, DECK, 0)) * basis.Rotation
+		lehne = pitch + z.th * 0.3
+	end
+	if hum.RigType == Enum.HumanoidRigType.R15 then
+		hipOffset = hum.HipHeight + hrp.Size.Y / 2
+	else
+		hipOffset = 2 + hrp.Size.Y / 2
+	end
+	hrp.CFrame = fussCF * CFrame.Angles(0, 0, lehne) * CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(0, hipOffset, 0)
+	hrp.AssemblyLinearVelocity = vel
+	hrp.AssemblyAngularVelocity = Vector3.zero
+end
+
+local function kamera(dt)
+	local cam = workspace.CurrentCamera
+	if not cam then
+		return
+	end
+	cam.CameraType = Enum.CameraType.Scriptable
+	local k = 1 - math.exp(-dt * 6)
+	local fahrer = Vector3.new(xw, y, zl)
+	local ziel, blick, fov
+	if kameraModus == 1 then
+		local zurueck = 13 + 5 * (z.v / VMAX)
+		ziel = Vector3.new(xw - zurueck, y + 6.5, zl * 0.85)
+		blick = fahrer + Vector3.new(12, 3 + z.th * 2, 0)
+		fov = 70 + 12 * (z.v / VMAX)
+	elseif kameraModus == 2 then
+		-- wie auf dem PyBadge: von der Seite. Die Kamera bleibt über der Straße
+		-- (vor den Laternen und Bäumen). Fährst du ganz rechts, geht sie höher.
+		local seiteZ = math.min(zl + 22, HALB - 1)
+		local hoeher = (22 - (seiteZ - zl)) * 0.75
+		ziel = Vector3.new(xw + 4, y + 4.5 + hoeher, seiteZ)
+		blick = fahrer + Vector3.new(4, 3, 0)
+		fov = 60
+	else
+		ziel = Vector3.new(xw + 15, y + 5, zl - 2)
+		blick = fahrer + Vector3.new(0, 3.5, 0)
+		fov = 65
+	end
+	if not camPos then
+		camPos = ziel
+	end
+	-- längs genau mitfahren, Höhe und Seite weich nachziehen
+	camPos = Vector3.new(ziel.X, camPos.Y + (ziel.Y - camPos.Y) * k, camPos.Z + (ziel.Z - camPos.Z) * k)
+	local pos = camPos
+	if wackelT > 0 then
+		wackelT -= dt
+		local s = wackelStark * math.clamp(wackelT / 0.3, 0, 1)
+		pos += Vector3.new(0, (math.random() - 0.5) * s, (math.random() - 0.5) * s)
+	end
+	cam.CFrame = CFrame.lookAt(pos, blick)
+	cam.FieldOfView = fov
+end
+
+-- ------------------------------------------------------------------
+-- Tag und Nacht (jeder rechnet die Uhrzeit selbst aus)
+-- ------------------------------------------------------------------
+local function uhrzeit()
+	local start = Lighting:GetAttribute("TagStart") or 0
+	local sek = workspace:GetServerTimeNow() - start
+	local p = (sek / E.DAY_LENGTH + 1 / 9) % 1
+	if p < 2 / 3 then
+		return 6 + 18 * p -- Tag: 6 bis 18 Uhr (2/3 der Zeit)
+	end
+	return (18 + 36 * (p - 2 / 3)) % 24 -- Nacht geht schneller vorbei
+end
+
+local istNacht = nil
+local FENSTER_TAG = Color3.fromRGB(62, 92, 124)
+local FENSTER_NACHT = Color3.fromRGB(255, 210, 120)
+local LAMPE_AUS = Color3.fromRGB(205, 205, 200)
+local LAMPE_AN = Color3.fromRGB(255, 225, 160)
+
+local function nachtSetzen(nacht)
+	istNacht = nacht
+	task.spawn(function()
+		for i, f in fenster do
+			if f:GetAttribute("Licht") then
+				f.Color = if nacht then FENSTER_NACHT else FENSTER_TAG
+				f.Material = if nacht then Enum.Material.Neon else Enum.Material.Glass
+			end
+			if i % 400 == 0 then
+				task.wait()
+			end
+		end
+		for _, l in lampen do
+			l.Color = if nacht then LAMPE_AN else LAMPE_AUS
+			l.Material = if nacht then Enum.Material.Neon else Enum.Material.SmoothPlastic
+			local licht = l:FindFirstChildOfClass("SpotLight")
+			if licht then
+				licht.Enabled = nacht
+			end
+		end
+	end)
+end
+
+local nachtPruefT = 0
+local function tagUndNacht(dt)
+	local uhr = uhrzeit()
+	Lighting.ClockTime = uhr
+	nachtPruefT -= dt
+	if nachtPruefT <= 0 then
+		nachtPruefT = 0.5
+		local nacht = uhr >= 18.2 or uhr < 5.8
+		if nacht ~= istNacht then
+			nachtSetzen(nacht)
+		end
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Hauptschleife
+-- ------------------------------------------------------------------
+local function update(dt)
+	dt = math.min(dt, 0.1)
+	tagUndNacht(dt)
+	hud:update(dt)
+
+	-- sich drehende Münzen
+	spin = (spin + dt * 3) % (math.pi * 2)
+	local i = muenzIdx
+	while i <= #muenzen and muenzen[i].x < xw + 500 do
+		local m = muenzen[i]
+		if not m.weg then
+			m.teil.CFrame = m.cf * CFrame.Angles(0, spin + m.x * 0.05, 0)
+		end
+		i += 1
+	end
+
+	if not bereit or not hrp or not hrp.Parent or hum.Health <= 0 then
+		return
+	end
+	if not hum.PlatformStand then
+		hum.PlatformStand = true
+	end
+
+	local inp = eingabe()
+	if modus == "fahren" then
+		updateFahren(dt, inp)
+	else
+		updateSturz(dt, inp)
+	end
+	sendeZustand()
+	if muenzSerieT > 0 then
+		muenzSerieT -= dt
+	end
+
+	-- Punkte zum Server schicken
+	sendT -= dt
+	if sendT <= 0 then
+		sendT = 0.8
+		if offen > 0 then
+			Remotes.Punkte:FireServer(offen)
+			unterwegs += offen
+			offen = 0
+		end
+	end
+
+	zeichnen(dt)
+	kamera(dt)
+	hud:tempoSetzen(z.v * 3.6)
+end
+
+RunService:BindToRenderStep("EScooterWheelie", Enum.RenderPriority.Camera.Value + 1, update)
+
+-- Körperhaltung und Burnout-Rauch für alle Fahrer
+local lackCache = setmetatable({}, { __mode = "k" })
+RunService.Stepped:Connect(function(_, dt)
+	local hue = (os.clock() * 0.25) % 1
+	for _, p in Players:GetPlayers() do
+		local c = p.Character
+		if c then
+			local link = c:FindFirstChild("Scooter")
+			local sc = link and link.Value
+			local bits = if p == player then zustandsBits() elseif sc then (sc:GetAttribute("Zustand") or 0) else 0
+			local lenker = if p == player and modus == "fahren" then math.deg(z.th) * 0.7 else 0
+			Posen.anwenden(c, bits, dt, lenker)
+			if sc and sc.Parent then
+				local info = lackCache[sc]
+				if not info then
+					info = { lack = {}, rauch = sc:FindFirstChild("Rauch", true) }
+					for _, d in sc:GetDescendants() do
+						if d:IsA("BasePart") and d:GetAttribute("Lack") then
+							table.insert(info.lack, d)
+						end
+					end
+					lackCache[sc] = info
+				end
+				if info.rauch then
+					info.rauch.Enabled = bit32.band(bits, 8) ~= 0
+				end
+				local f = Farben[sc:GetAttribute("Farbe") or 1]
+				if f and f.regenbogen then
+					local farbe = Color3.fromHSV(hue, 0.85, 1)
+					for _, part in info.lack do
+						part.Color = farbe
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- ------------------------------------------------------------------
+-- Figur und Scooter übernehmen
+-- ------------------------------------------------------------------
+local function figurUebernehmen(c)
+	bereit = false
+	char = c
+	hum = c:WaitForChild("Humanoid")
+	hrp = c:WaitForChild("HumanoidRootPart")
+	local link = c:WaitForChild("Scooter", 30)
+	if not link or char ~= c then
+		return
+	end
+	while not link.Value do
+		link.Changed:Wait()
+	end
+	local root = link.Value:WaitForChild("Root", 10)
+	if not root or char ~= c then
+		return
+	end
+	scooterRoot = root
+	hum.PlatformStand = true
+	hum.AutoRotate = false
+	hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	hum.JumpPower = 0
+	hum.JumpHeight = 0
+
+	xw = math.clamp(hrp.Position.X, 10, LEN - 60)
+	zl = math.random(-12, 12)
+	y = 0
+	neustart()
+	camPos = nil
+	bereit = true
+end
+
+player.CharacterAdded:Connect(function(c)
+	task.spawn(figurUebernehmen, c)
+end)
+if player.Character then
+	task.spawn(figurUebernehmen, player.Character)
+end
+
+-- Anzeigen, wenn sich der Spielstand ändert
+local function kontoGeaendert()
+	unterwegs = 0
+	hud:konto(kontoStand())
+	if hud.shopOffen then
+		shopAktualisieren()
+	end
+end
+player:GetAttributeChangedSignal("Punkte"):Connect(kontoGeaendert)
+player:GetAttributeChangedSignal("Farben"):Connect(shopAktualisieren)
+player:GetAttributeChangedSignal("Farbe"):Connect(shopAktualisieren)
+player:GetAttributeChangedSignal("Rekord"):Connect(function()
+	hud:rekord(rekord())
+end)
+hud:konto(kontoStand())
+hud:rekord(rekord())
+
+-- Hilfe nach einer Weile ausblenden
+task.delay(if UserInputService.TouchEnabled then 15 else 25, function()
+	hud:hilfeZeigen(false)
+end)
+hud:toast(if UserInputService.TouchEnabled then "WHEELIE-Knopf = Vorderrad hoch!" else "LEERTASTE = WHEELIE!")
+]]></string>
+        </Properties>
+        <Item class="ModuleScript" referent="13">
+          <Properties>
+            <string name="Name">HUD</string>
+            <string name="Source"><![CDATA[--[[
+	Anzeige auf dem Bildschirm: Tempo, Punkte, Wheelie-Meter, Balance-Anzeige,
+	Hilfe, Farben-Shop und (auf Handy/Tablet) große Knöpfe.
+]]
+
+local UserInputService = game:GetService("UserInputService")
+
+local HUD = {}
+HUD.__index = HUD
+
+local SCHRIFT = Enum.Font.FredokaOne
+local GELB = Color3.fromRGB(255, 214, 64)
+local WEISS = Color3.new(1, 1, 1)
+local SCHWARZ = Color3.new(0, 0, 0)
+
+local function neu(klasse, props, parent)
+	local o = Instance.new(klasse)
+	for k, v in props do
+		o[k] = v
+	end
+	o.Parent = parent
+	return o
+end
+
+local function ecken(parent, r)
+	neu("UICorner", { CornerRadius = UDim.new(r or 0.2, 0) }, parent)
+end
+
+local function text(parent, props)
+	local l = neu("TextLabel", {
+		BackgroundTransparency = 1,
+		Font = SCHRIFT,
+		TextScaled = true,
+		TextColor3 = WEISS,
+		Text = "",
+		Size = UDim2.fromScale(0.2, 0.05),
+	}, parent)
+	for k, v in props do
+		l[k] = v
+	end
+	neu("UIStroke", { Thickness = 2, Color = SCHWARZ, Transparency = 0.15 }, l)
+	return l
+end
+
+local function knopf(parent, beschriftung, farbe, reihenfolge)
+	local b = neu("TextButton", {
+		Size = UDim2.fromScale(0.31, 1),
+		BackgroundColor3 = farbe,
+		Font = SCHRIFT,
+		TextScaled = true,
+		TextColor3 = WEISS,
+		Text = beschriftung,
+		LayoutOrder = reihenfolge,
+		AutoButtonColor = true,
+	}, parent)
+	ecken(b, 0.3)
+	neu("UIStroke", { Thickness = 1.5, Color = SCHWARZ, Transparency = 0.3 }, b)
+	neu("UIPadding", {
+		PaddingTop = UDim.new(0.15, 0),
+		PaddingBottom = UDim.new(0.15, 0),
+		PaddingLeft = UDim.new(0.06, 0),
+		PaddingRight = UDim.new(0.06, 0),
+	}, b)
+	return b
+end
+
+local HILFE_PC = table.concat({
+	"W / Pfeil hoch:  Gas  (im Wheelie: Vorderrad höher)",
+	"S / Pfeil runter:  Bremse  (im Wheelie: tiefer)",
+	"A D / Pfeile:  lenken",
+	"LEERTASTE:  Wheelie an / sauber landen",
+	"W + S halten:  Burnout, dann S loslassen = Turbo!",
+	"Q: Einhänder   E: No-Hander   C: in die Knie",
+	"F: Farben-Shop   V: Kamera   H: Hilfe",
+}, "\n")
+
+local HILFE_TOUCH = table.concat({
+	"Stick links: lenken",
+	"GAS / BREMSE: schneller / langsamer",
+	"WHEELIE: Vorderrad hoch, nochmal = landen",
+	"Im Wheelie: GAS = höher, BREMSE = tiefer",
+	"GAS + BREMSE: Burnout, BREMSE loslassen = Turbo",
+	"1-HAND, NO-HAND, KNIE: Tricks (halten)",
+}, "\n")
+
+function HUD.neu(player, Farben, E, istTouch)
+	local self = setmetatable({}, HUD)
+	self.Farben = Farben
+	self.istTouch = istTouch
+	self.touch = { gas = false, bremse = false, ein = false, nohand = false, knie = false }
+	self.gehalten = {}
+	self.shopOffen = false
+	self.shopWahl = 1
+	self.bannerT = 0
+	self.toastT = 0
+	self.flashT = 0
+	self.kacheln = {}
+
+	local gui = neu("ScreenGui", {
+		Name = "WheelieHUD",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		IgnoreGuiInset = false,
+	}, player:WaitForChild("PlayerGui"))
+	self.gui = gui
+
+	-- links oben: Tempo, Punkte, Rekord, Knöpfe
+	self.tempo = text(gui, {
+		Position = UDim2.fromScale(0.015, 0.02),
+		Size = UDim2.fromScale(0.2, 0.08),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "0 km/h",
+	})
+	self.kontoText = text(gui, {
+		Position = UDim2.fromScale(0.015, 0.105),
+		Size = UDim2.fromScale(0.22, 0.042),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = GELB,
+		Text = "Punkte: 0",
+	})
+	self.rekordText = text(gui, {
+		Position = UDim2.fromScale(0.015, 0.15),
+		Size = UDim2.fromScale(0.22, 0.036),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "Rekord: 0.0 m",
+	})
+	local leiste = neu("Frame", {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromScale(0.015, 0.195),
+		Size = if istTouch then UDim2.fromScale(0.4, 0.085) else UDim2.fromScale(0.3, 0.05),
+	}, gui)
+	neu("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		Padding = UDim.new(0.02, 0),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, leiste)
+	self.knopfShop = knopf(leiste, if istTouch then "Shop" else "Shop (F)", Color3.fromRGB(235, 80, 150), 1)
+	self.knopfKamera = knopf(leiste, if istTouch then "Kamera" else "Kamera (V)", Color3.fromRGB(60, 120, 220), 2)
+	self.knopfHilfe = knopf(leiste, if istTouch then "Hilfe" else "Hilfe (H)", Color3.fromRGB(90, 90, 110), 3)
+	self.knopfShop.Activated:Connect(function()
+		if self.onShop then
+			self.onShop()
+		end
+	end)
+	self.knopfKamera.Activated:Connect(function()
+		if self.onKamera then
+			self.onKamera()
+		end
+	end)
+	self.knopfHilfe.Activated:Connect(function()
+		self:hilfeUmschalten()
+	end)
+
+	-- Mitte oben: große Anzeige (Wheelie-Meter, Sprung, Sturz ...)
+	self.big = text(gui, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.07),
+		Size = UDim2.fromScale(0.5, 0.11),
+	})
+	self.sub = text(gui, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.18),
+		Size = UDim2.fromScale(0.5, 0.05),
+		TextColor3 = GELB,
+	})
+
+	-- Balance-Anzeige: grün = sicher, gelb = Balance, rot = gleich kippst du um
+	local bal = math.clamp(E.BALANCE_DEG / E.CRASH_DEG, 0.2, 0.7)
+	self.balance = neu("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.245),
+		Size = UDim2.fromScale(0.3, 0.022),
+		BackgroundColor3 = WEISS,
+		BorderSizePixel = 0,
+		Visible = false,
+	}, gui)
+	ecken(self.balance, 0.5)
+	neu("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 200, 90)),
+			ColorSequenceKeypoint.new(bal - 0.12, Color3.fromRGB(60, 200, 90)),
+			ColorSequenceKeypoint.new(bal, Color3.fromRGB(255, 220, 60)),
+			ColorSequenceKeypoint.new(math.min(0.97, bal + 0.22), Color3.fromRGB(255, 120, 40)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(230, 40, 40)),
+		}),
+	}, self.balance)
+	neu("UIStroke", { Thickness = 2, Color = SCHWARZ, Transparency = 0.2 }, self.balance)
+	neu("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(bal, 0.5),
+		Size = UDim2.new(0, 3, 1.7, 0),
+		BackgroundColor3 = WEISS,
+		BorderSizePixel = 0,
+	}, self.balance)
+	self.zeiger = neu("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0, 0.5),
+		Size = UDim2.new(0, 10, 2.3, 0),
+		BackgroundColor3 = SCHWARZ,
+		BorderSizePixel = 0,
+	}, self.balance)
+	ecken(self.zeiger, 0.5)
+	neu("UIStroke", { Thickness = 2, Color = WEISS }, self.zeiger)
+
+	-- kurze Meldungen
+	self.toastText = text(gui, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.6),
+		Size = UDim2.fromScale(0.6, 0.055),
+		TextColor3 = WEISS,
+	})
+
+	-- weißer Blitz vom Blitzer
+	self.flash = neu("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WEISS,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 20,
+	}, gui)
+
+	-- Hilfe
+	self.hilfe = neu("Frame", {
+		AnchorPoint = if istTouch then Vector2.new(0, 0) else Vector2.new(0, 1),
+		Position = if istTouch then UDim2.fromScale(0.015, 0.3) else UDim2.fromScale(0.015, 0.97),
+		Size = if istTouch then UDim2.fromScale(0.4, 0.34) else UDim2.fromScale(0.3, 0.2),
+		BackgroundColor3 = SCHWARZ,
+		BackgroundTransparency = 0.4,
+		ZIndex = 8,
+	}, gui)
+	ecken(self.hilfe, 0.06)
+	neu("TextLabel", {
+		Position = UDim2.fromScale(0.04, 0.05),
+		Size = UDim2.fromScale(0.92, 0.9),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.SourceSansBold,
+		TextScaled = true,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextColor3 = WEISS,
+		Text = if istTouch then HILFE_TOUCH else HILFE_PC,
+		ZIndex = 9,
+	}, self.hilfe)
+
+	if istTouch then
+		self:touchKnoepfe()
+	end
+	self:shopBauen()
+	return self
+end
+
+-- ------------------------------------------------------------------
+-- Große Knöpfe für Handy und Tablet
+-- ------------------------------------------------------------------
+function HUD:touchKnoepfe()
+	local pad = neu("Frame", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.fromScale(0.99, 0.97),
+		Size = UDim2.fromScale(0.5, 0.62),
+		BackgroundTransparency = 1,
+	}, self.gui)
+	neu("UIAspectRatioConstraint", { AspectRatio = 1.25 }, pad)
+	self.touchFelder = {}
+
+	local function rund(name, beschriftung, farbe, x, y, breite)
+		local b = neu("TextButton", {
+			Name = name,
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.fromScale(x, y),
+			Size = UDim2.fromScale(breite, breite * 1.25),
+			BackgroundColor3 = farbe,
+			BackgroundTransparency = 0.2,
+			Font = SCHRIFT,
+			TextScaled = true,
+			TextColor3 = WEISS,
+			Text = beschriftung,
+			AutoButtonColor = false,
+		}, pad)
+		ecken(b, 0.5)
+		neu("UIStroke", {
+			Thickness = 3,
+			Color = WEISS,
+			Transparency = 0.35,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}, b)
+		neu("UIPadding", {
+			PaddingTop = UDim.new(0.3, 0),
+			PaddingBottom = UDim.new(0.3, 0),
+			PaddingLeft = UDim.new(0.12, 0),
+			PaddingRight = UDim.new(0.12, 0),
+		}, b)
+		b.InputBegan:Connect(function(input)
+			local art = input.UserInputType
+			if art == Enum.UserInputType.Touch or art == Enum.UserInputType.MouseButton1 then
+				self.gehalten[name] = input
+				self.touch[name] = true
+				b.BackgroundTransparency = 0
+				if name == "wheelie" and self.onWheelie then
+					self.onWheelie()
+				end
+			end
+		end)
+		self.touchFelder[name] = b
+		return b
+	end
+
+	rund("gas", "GAS", Color3.fromRGB(40, 170, 70), 1, 1, 0.33)
+	rund("bremse", "BREMSE", Color3.fromRGB(210, 50, 50), 0.65, 1, 0.27)
+	rund("knie", "KNIE", Color3.fromRGB(150, 90, 200), 0.355, 1, 0.19)
+	rund("wheelie", "WHEELIE", Color3.fromRGB(40, 110, 220), 1, 0.56, 0.27)
+	rund("ein", "1-HAND", Color3.fromRGB(240, 140, 30), 0.69, 0.6, 0.19)
+	rund("nohand", "NO-HAND", Color3.fromRGB(240, 90, 120), 0.48, 0.6, 0.19)
+
+	UserInputService.InputEnded:Connect(function(input)
+		for name, inp in self.gehalten do
+			if inp == input then
+				self.gehalten[name] = nil
+				self.touch[name] = false
+				self.touchFelder[name].BackgroundTransparency = 0.2
+			end
+		end
+	end)
+end
+
+-- ------------------------------------------------------------------
+-- Farben-Shop
+-- ------------------------------------------------------------------
+function HUD:shopBauen()
+	local shop = neu("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.52),
+		Size = UDim2.fromScale(0.7, 0.72),
+		BackgroundColor3 = Color3.fromRGB(28, 30, 46),
+		Visible = false,
+		ZIndex = 10,
+	}, self.gui)
+	neu("UISizeConstraint", { MaxSize = Vector2.new(860, 540) }, shop)
+	ecken(shop, 0.04)
+	neu("UIStroke", { Thickness = 3, Color = Color3.fromRGB(255, 95, 162) }, shop)
+	self.shop = shop
+
+	text(shop, {
+		Position = UDim2.fromScale(0.03, 0.03),
+		Size = UDim2.fromScale(0.5, 0.1),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "FARBEN-SHOP",
+		ZIndex = 11,
+	})
+	self.shopKonto = text(shop, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(0.86, 0.045),
+		Size = UDim2.fromScale(0.33, 0.07),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = GELB,
+		ZIndex = 11,
+	})
+	local zu = neu("TextButton", {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(0.98, 0.03),
+		Size = UDim2.fromScale(0.08, 0.1),
+		BackgroundColor3 = Color3.fromRGB(210, 50, 50),
+		Font = SCHRIFT,
+		TextScaled = true,
+		TextColor3 = WEISS,
+		Text = "X",
+		ZIndex = 11,
+	}, shop)
+	ecken(zu, 0.3)
+	zu.Activated:Connect(function()
+		self:shopZeigen(false)
+	end)
+
+	local raster = neu("Frame", {
+		Position = UDim2.fromScale(0.03, 0.17),
+		Size = UDim2.fromScale(0.94, 0.66),
+		BackgroundTransparency = 1,
+		ZIndex = 11,
+	}, shop)
+	neu("UIGridLayout", {
+		CellSize = UDim2.fromScale(0.235, 0.46),
+		CellPadding = UDim2.fromScale(0.02, 0.06),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, raster)
+
+	for i, f in self.Farben do
+		local k = neu("TextButton", {
+			Text = "",
+			LayoutOrder = i,
+			BackgroundColor3 = Color3.fromRGB(48, 50, 72),
+			AutoButtonColor = true,
+			ZIndex = 12,
+		}, raster)
+		ecken(k, 0.1)
+		local rand = neu("UIStroke", { Thickness = 3, Color = WEISS, Transparency = 1 }, k)
+		local farbe = neu("Frame", {
+			Position = UDim2.fromScale(0.08, 0.07),
+			Size = UDim2.fromScale(0.84, 0.5),
+			BackgroundColor3 = f.farbe,
+			ZIndex = 13,
+		}, k)
+		ecken(farbe, 0.15)
+		if f.regenbogen then
+			farbe.BackgroundColor3 = WEISS
+			neu("UIGradient", {
+				Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+					ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 200, 0)),
+					ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0, 220, 0)),
+					ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0, 200, 255)),
+					ColorSequenceKeypoint.new(0.8, Color3.fromRGB(80, 60, 255)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 200)),
+				}),
+			}, farbe)
+		end
+		local name = text(k, {
+			Position = UDim2.fromScale(0.05, 0.6),
+			Size = UDim2.fromScale(0.9, 0.18),
+			Text = f.name,
+			ZIndex = 13,
+		})
+		local preis = text(k, {
+			Position = UDim2.fromScale(0.05, 0.8),
+			Size = UDim2.fromScale(0.9, 0.15),
+			Text = "",
+			ZIndex = 13,
+		})
+		k.Activated:Connect(function()
+			self.shopWahl = i
+			if self.onKaufen then
+				self.onKaufen(i)
+			end
+		end)
+		self.kacheln[i] = { knopf = k, rand = rand, name = name, preis = preis }
+	end
+
+	self.shopStatusText = text(shop, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.86),
+		Size = UDim2.fromScale(0.9, 0.08),
+		Text = "Klick auf eine Farbe zum Kaufen oder Auswählen.",
+		ZIndex = 11,
+	})
+end
+
+function HUD:shopZeigen(an)
+	self.shopOffen = an
+	self.shop.Visible = an
+	if an then
+		self.hilfe.Visible = false
+	end
+end
+
+function HUD:shopAktualisieren(punkte, besitz, gewaehlt)
+	self.shopKonto.Text = "Punkte: " .. punkte
+	for i, k in self.kacheln do
+		local f = self.Farben[i]
+		local hat = bit32.band(besitz, bit32.lshift(1, i - 1)) ~= 0
+		if i == gewaehlt then
+			k.preis.Text = "AUSGEWÄHLT"
+			k.preis.TextColor3 = Color3.fromRGB(120, 255, 140)
+		elseif hat then
+			k.preis.Text = "gekauft - wählen"
+			k.preis.TextColor3 = WEISS
+		else
+			k.preis.Text = f.preis .. " Punkte"
+			k.preis.TextColor3 = if punkte >= f.preis then GELB else Color3.fromRGB(150, 150, 160)
+		end
+		k.rand.Transparency = if i == self.shopWahl then 0 else 1
+	end
+end
+
+function HUD:shopStatus(t, gut)
+	self.shopStatusText.Text = t
+	self.shopStatusText.TextColor3 = if gut then Color3.fromRGB(120, 255, 140) else Color3.fromRGB(255, 120, 120)
+end
+
+function HUD:shopAuswahl(schritt)
+	local n = #self.Farben
+	self.shopWahl = (self.shopWahl - 1 + schritt) % n + 1
+end
+
+-- ------------------------------------------------------------------
+-- Anzeigen
+-- ------------------------------------------------------------------
+function HUD:tempoSetzen(kmh)
+	self.tempo.Text = math.floor(kmh + 0.5) .. " km/h"
+end
+
+function HUD:konto(n)
+	self.kontoText.Text = "Punkte: " .. n
+end
+
+function HUD:rekord(m)
+	self.rekordText.Text = "Rekord: " .. string.format("%.1f", m) .. " m"
+end
+
+-- sek = 0: bleibt stehen, bis etwas anderes kommt (z.B. während des Wheelies)
+function HUD:banner(gross, klein, farbe, sek)
+	self.big.Text = gross
+	self.sub.Text = klein
+	self.sub.TextColor3 = farbe or GELB
+	self.bannerT = sek or 0
+end
+
+function HUD:bannerWeg()
+	self.big.Text = ""
+	self.sub.Text = ""
+	self.bannerT = 0
+end
+
+-- nur löschen, wenn die Anzeige gerade "fest" ist (kein Ergebnis, das noch stehen soll)
+function HUD:bannerWegWennFest()
+	if self.bannerT == 0 then
+		self:bannerWeg()
+	end
+end
+
+function HUD:bannerFrei()
+	return self.bannerT == 0
+end
+
+function HUD:toast(t)
+	self.toastText.Text = t
+	self.toastT = 1.8
+end
+
+function HUD:balanceZeigen(an, anteil)
+	self.balance.Visible = an
+	if an then
+		self.zeiger.Position = UDim2.fromScale(math.clamp(anteil, 0, 1), 0.5)
+	end
+end
+
+function HUD:blitz()
+	self.flashT = 0.2
+end
+
+function HUD:hilfeUmschalten()
+	self.hilfe.Visible = not self.hilfe.Visible
+end
+
+function HUD:hilfeZeigen(an)
+	self.hilfe.Visible = an
+end
+
+function HUD:update(dt)
+	if self.bannerT > 0 then
+		self.bannerT -= dt
+		if self.bannerT <= 0 then
+			self:bannerWeg()
+		end
+	end
+	if self.toastT > 0 then
+		self.toastT -= dt
+		if self.toastT <= 0 then
+			self.toastText.Text = ""
+		end
+	end
+	if self.flashT > 0 then
+		self.flashT = math.max(0, self.flashT - dt)
+		self.flash.BackgroundTransparency = 1 - (self.flashT / 0.2) * 0.85
+	else
+		self.flash.BackgroundTransparency = 1
+	end
+end
+
+return HUD
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="14">
+          <Properties>
+            <string name="Name">Posen</string>
+            <string name="Source"><![CDATA[--[[
+	Körperhaltung der Fahrer (nur für R15-Figuren):
+	Hände am Lenker, Einhänder, No-Hander, in die Knie, Sturz.
+	Wird bei jedem Spieler für alle Fahrer berechnet.
+
+	Zustand (Bits): 1 = Einhänder, 2 = No-Hander, 4 = Knie, 8 = Burnout, 16 = Sturz
+]]
+
+local Posen = {}
+
+local GELENKE = {
+	RS = { "RightUpperArm", "RightShoulder" },
+	LS = { "LeftUpperArm", "LeftShoulder" },
+	RE = { "RightLowerArm", "RightElbow" },
+	LE = { "LeftLowerArm", "LeftElbow" },
+	RH = { "RightUpperLeg", "RightHip" },
+	LH = { "LeftUpperLeg", "LeftHip" },
+	RK = { "RightLowerLeg", "RightKnee" },
+	LK = { "LeftLowerLeg", "LeftKnee" },
+	ROOT = { "LowerTorso", "Root" },
+	WAIST = { "UpperTorso", "Waist" },
+}
+
+local cache = setmetatable({}, { __mode = "k" })
+local rad = math.rad
+local ID = CFrame.identity
+
+local function rx(g)
+	return CFrame.Angles(rad(g), 0, 0)
+end
+
+local function rz(g)
+	return CFrame.Angles(0, 0, rad(g))
+end
+
+local function motoren(char)
+	local c = cache[char]
+	if c ~= nil then
+		return c or nil
+	end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return nil
+	end
+	if hum.RigType ~= Enum.HumanoidRigType.R15 then
+		cache[char] = false
+		return nil
+	end
+	local m = {}
+	local anzahl = 0
+	for key, def in GELENKE do
+		local teil = char:FindFirstChild(def[1])
+		local motor = teil and teil:FindFirstChild(def[2])
+		if motor and motor:IsA("Motor6D") then
+			m[key] = motor
+			anzahl += 1
+		end
+	end
+	if anzahl < 10 then
+		return nil -- Figur ist noch nicht ganz geladen
+	end
+	c = { motoren = m, jetzt = {} }
+	for key in m do
+		c.jetzt[key] = ID
+	end
+	cache[char] = c
+	return c
+end
+
+local function ziel(bits, lenker)
+	local t = {}
+	local knie = bit32.band(bits, 4) ~= 0
+	-- Hände am Lenker
+	local arm = rx((if knie then 88 else 62) + lenker)
+	t.RS, t.LS = arm, arm
+	t.RE, t.LE = rx(22), rx(22)
+	if bit32.band(bits, 2) ~= 0 then
+		-- No-Hander: beide Arme hoch
+		t.RS, t.LS = rz(150), rz(-150)
+		t.RE, t.LE = ID, ID
+	elseif bit32.band(bits, 1) ~= 0 then
+		-- Einhänder: linker Arm winkt zur Seite
+		t.LS = CFrame.Angles(rad(15), 0, rad(-115))
+		t.LE = rx(35)
+	end
+	if knie then
+		t.ROOT = CFrame.new(0, -1.0, 0)
+		t.RH, t.LH = rx(65), rx(65)
+		t.RK, t.LK = rx(-110), rx(-110)
+		t.WAIST = rx(-25)
+	else
+		t.ROOT = CFrame.new(0, -0.1, 0)
+		t.RH, t.LH = rx(10), rx(-6)
+		t.RK, t.LK = rx(-14), rx(-8)
+		t.WAIST = ID
+	end
+	if bit32.band(bits, 8) ~= 0 then
+		t.WAIST = rx(-15) -- Burnout: nach vorne lehnen
+	end
+	if bit32.band(bits, 16) ~= 0 then
+		-- Sturz: Arme und Beine in die Luft
+		t.RS, t.LS = rz(165), rz(-165)
+		t.RE, t.LE = ID, ID
+		t.RH, t.LH = rx(55), rx(25)
+		t.RK, t.LK = rx(-30), rx(-10)
+		t.ROOT = ID
+		t.WAIST = rx(10)
+	end
+	return t
+end
+
+-- char: Figur, bits: Zustand, dt: Zeit seit dem letzten Bild, lenker: Extra-Winkel für die Arme (Grad)
+function Posen.anwenden(char, bits, dt, lenker)
+	local c = motoren(char)
+	if not c then
+		return
+	end
+	local t = ziel(bits, lenker or 0)
+	local a = 1 - math.exp(-dt * 14)
+	for key, motor in c.motoren do
+		local neu = c.jetzt[key]:Lerp(t[key] or ID, a)
+		c.jetzt[key] = neu
+		motor.Transform = neu
+	end
+end
+
+return Posen
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="15">
+          <Properties>
+            <string name="Name">Toene</string>
+            <string name="Source"><![CDATA[--[[
+	Töne. Es werden nur Töne benutzt, die bei Roblox schon dabei sind
+	(rbxasset://), damit man nichts hochladen muss.
+]]
+
+local SoundService = game:GetService("SoundService")
+
+local Toene = {}
+
+local IDS = {
+	muenze = { "rbxasset://sounds/electronicpingshort.wav", 0.5 },
+	trick = { "rbxasset://sounds/swoosh.wav", 0.6 },
+	sprung = { "rbxasset://sounds/action_jump.mp3", 0.6 },
+	landen = { "rbxasset://sounds/action_jump_land.mp3", 0.8 },
+	sturz = { "rbxasset://sounds/splat.wav", 0.7 },
+	blitz = { "rbxasset://sounds/snap.wav", 1 },
+	gully = { "rbxasset://sounds/clickfast.wav", 0.8 },
+	launch = { "rbxasset://sounds/swoosh.wav", 0.9 },
+	rekord = { "rbxasset://sounds/victory.wav", 0.6 },
+	kaufen = { "rbxasset://sounds/electronicpingshort.wav", 0.7 },
+	nein = { "rbxasset://sounds/clickfast.wav", 0.7 },
+}
+
+local sounds = {}
+for name, def in IDS do
+	local s = Instance.new("Sound")
+	s.Name = "Wheelie_" .. name
+	s.SoundId = def[1]
+	s.Volume = def[2]
+	s.Parent = SoundService
+	sounds[name] = s
+end
+
+function Toene.spielen(name, tonhoehe)
+	local s = sounds[name]
+	if s then
+		s.PlaybackSpeed = tonhoehe or 1
+		s.TimePosition = 0
+		s:Play()
+	end
+end
+
+return Toene
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="Workspace" referent="16">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <bool name="NeedsPivotMigration">false</bool>
+      <bool name="StreamingEnabled">false</bool>
+    </Properties>
+  </Item>
+</roblox>
