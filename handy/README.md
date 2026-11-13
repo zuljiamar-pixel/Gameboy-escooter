@@ -17,7 +17,7 @@ seine eigenen. Neu dazu kommt der **Stoppie**.
 
 * **Stoppie:** Das Heck geht hoch und der Scooter rollt nur noch auf dem
   Vorderrad. Ab 12 km/h **STOPPIE** drücken, dann balancieren:
-  **BREMSE = Heck höher**, **GAS = Heck runter** (umgekehrt wie beim Wheelie).
+  nur mit der Bremse: **BREMSE halten = Heck höher**, **BREMSE loslassen = Heck runter**. Gas braucht es nicht.
   Im Stoppie treibt der Motor nicht, der Scooter wird also langsamer, und wenn
   er fast steht, kommt das Heck von selbst runter. Nochmal **STOPPIE** = sanft
   landen. Zu weit hoch (über 58 Grad), und du fliegst über den Lenker.

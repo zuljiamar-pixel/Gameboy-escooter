@@ -34,7 +34,7 @@
   const S_CRASH_DEG = 58;     // ab hier fliegst du über den Lenker (Grad)
   const S_GRAVITY = 4.0;      // wie stark das Heck nach unten will
   const S_LIFT = 7.0;         // wie stark die Vorderbremse das Heck hochzieht
-  const S_DOWN = 6.0;         // wie stark Gas (Bremse lösen) das Heck runterlässt
+  const S_DOWN = 6.0;         // wie stark das Heck runterkommt, wenn man die Bremse loslässt
   const S_BRAKE = 7.0;        // so stark bremst der Scooter im Stoppie (m/s²)
   const S_MIN_KMH = 12;       // so schnell muss man mindestens sein
   const COIN_PER_M_STOPPIE = 3;   // Münzen pro Meter Stoppie (Stoppies sind kürzer)
@@ -1341,7 +1341,7 @@
 
   function physicsStoppie(h, gas, brake) {
     // Ein kleiner Zeitschritt im Stoppie. Gibt true zurück, wenn das Hinterrad aufsetzt.
-    // Das Hinterrad ist in der Luft: der Motor treibt nicht, nur die Vorderbremse wirkt.
+    // Das Hinterrad ist in der Luft: der Motor treibt nicht, Gas macht nichts. Nur die Bremse steuert.
     let v = G.v;
     if (brake) v -= S_BRAKE * h;
     v -= (ROLL + AERO * v * v) * h;
@@ -1357,7 +1357,7 @@
       a -= LAND_TORQUE;
     } else if (G.smode) {
       if (brake) a += S_LIFT * CTRL[G.arms] * min(1.0, v * 0.35);
-      if (gas) a -= S_DOWN;
+      else a -= S_DOWN;                         // Bremse los = Heck kommt runter (Gas braucht es nicht)
       a += WOBBLE[G.arms] * sin(G.t * 2.7);
     }
     po += a * h;
