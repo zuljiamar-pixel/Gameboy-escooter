@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">E-Scooter Wheelie</string>
+    <string name="title_activity_main">E-Scooter Wheelie</string>
+    <string name="package_name">ch.escooter.wheelie</string>
+    <string name="custom_url_scheme">ch.escooter.wheelie</string>
+</resources>
