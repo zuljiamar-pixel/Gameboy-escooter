@@ -342,7 +342,7 @@
   function layoutPads() {
     const cx = IL + 31, cy = H - 31, ax = W - IR - 20, ay = H - 26, bx = ax - 31, by = H - 17;
     pads = [
-      { bit: BTN_UP, x: cx, y: cy - 17, r: 10.5, t: 'WHEELIE', c: '#ffd23f' },
+      { bit: BTN_UP, x: cx, y: cy - 17, r: 10.5, t: 'WHEELIE', t2: '+BREMSE: STOPPIE', c: '#ffd23f' },
       { bit: BTN_LEFT, x: cx - 18, y: cy, r: 10.5, t: '1 HAND', c: '#ffffff' },
       { bit: BTN_RIGHT, x: cx + 18, y: cy, r: 10.5, t: '0 HAND', c: '#ffffff' },
       { bit: BTN_DOWN, x: cx, y: cy + 17, r: 10.5, t: 'KNIE', c: '#ffffff' },
@@ -351,7 +351,6 @@
       { bit: BTN_A, x: ax, y: ay, r: 15, t: 'GAS', c: '#3ccb5a' },
       { bit: BTN_B, x: bx, y: by, r: 12, t: 'BREMSE', c: '#e84a3c' },
       { bit: BTN_A | BTN_B, x: (ax + bx) / 2 - 3.5, y: (ay + by) / 2 - 11.5, r: 6.5, t: 'BURN', c: '#ff8a1f' },
-      { bit: BTN_STOP, x: bx - 8, y: by - 25, r: 9.5, t: 'STOPPIE', c: '#5fd0ff' },
     ];
   }
   function readPads() {
@@ -1376,7 +1375,9 @@
   function updatePlay(dt) {
     const gas = (held & BTN_A) !== 0, brake = (held & BTN_B) !== 0, ay = axleY();
     const dual = store.tune[store.scooter][DUAL] > 0;
-    if (pressed & BTN_STOP) {
+    // Ein Knopf für beides: WHEELIE-Knopf allein = Wheelie, mit gehaltener Bremse = Stoppie
+    const upStop = (pressed & BTN_UP) && (G.smode || (brake && !G.wmode && G.th === 0));
+    if ((pressed & BTN_STOP) || upStop) {
       if (G.smode) {
         if (G.ps > 0) G.slanding = true;                                     // nochmal: sanft landen
         else G.smode = false;
@@ -1389,7 +1390,7 @@
       }
     }
     const inS = G.smode || G.ps > 0;            // im Stoppie
-    if ((pressed & BTN_UP) && !inS) {
+    if ((pressed & BTN_UP) && !inS && !upStop) {
       if (!G.wmode) { G.wmode = true; G.landing = false; G.om += POP; }      // Vorderrad hochreißen
       else if (G.th > 0) G.landing = true;                                   // nochmal: sanft landen
       else G.wmode = false;
@@ -1921,6 +1922,7 @@
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 0.5, 0, 2 * PI); ctx.stroke();
       if (b.t) text(b.t, b.x, b.y - (b.r > 12 ? 3.2 : b.r > 8 ? 2.0 : 1.6), b.r > 12 ? 6.2 : b.r > 8 ? 3.5 : 2.9,
         on ? '#101018' : '#ffffff', 1, false);
+      if (b.t2) text(b.t2, b.x, b.y + 2.4, 1.9, on ? '#101018' : '#ffe27a', 1, false);
       ctx.globalAlpha = 1;
     }
   }
@@ -2095,7 +2097,7 @@
     }
     if (usedTouch || pointers.size) drawPads();
     else if (st === PLAY && G.v === 0 && !G.burn)
-      text('TASTEN: X = GAS   C = BREMSE   S = STOPPIE   PFEILE = WHEELIE / TRICKS', cx, H - 9, 4, 'rgba(255,255,255,0.85)', 1);
+      text('TASTEN: X = GAS   C = BREMSE   OBEN = WHEELIE   C + OBEN = STOPPIE   PFEILE = TRICKS', cx, H - 9, 4, 'rgba(255,255,255,0.85)', 1);
     if (st === CRASH && G.crashT > 1.0 && button(cx - 22, 58, 44, 13, 'MENÜ', { size: 6 })) gotoMenu();
   }
 

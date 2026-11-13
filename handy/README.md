@@ -16,10 +16,10 @@ seine eigenen. Neu dazu kommt der **Stoppie**.
 ## Was ist neu?
 
 * **Stoppie:** Das Heck geht hoch und der Scooter rollt nur noch auf dem
-  Vorderrad. Ab 12 km/h **STOPPIE** drücken, dann balancieren:
+  Vorderrad. Ab 12 km/h **BREMSE halten und WHEELIE drücken** (ein Knopf für beides: ohne Bremse gibt es einen Wheelie), dann balancieren:
   nur mit der Bremse: **BREMSE halten = Heck höher**, **BREMSE loslassen = Heck runter**. Gas braucht es nicht.
   Im Stoppie treibt der Motor nicht, der Scooter wird also langsamer, und wenn
-  er fast steht, kommt das Heck von selbst runter. Nochmal **STOPPIE** = sanft
+  er fast steht, kommt das Heck von selbst runter. Nochmal **WHEELIE** = sanft
   landen. Zu weit hoch (über 58 Grad), und du fliegst über den Lenker.
   Tricks (1 Hand, 0 Hand, Knie) gehen auch, aber mit weniger Händen wirkt die
   Bremse schwächer. Der Stoppie hat einen eigenen Rekord.
@@ -77,10 +77,10 @@ seine eigenen. Neu dazu kommt der **Stoppie**.
   und sprüht Funken (Warnung!). Der Motor klingt wie ein E-Motor (Summen und
   Sirren), dazu kommt Fahrtwind.
 * **Touch-Knöpfe:** links WHEELIE / 1 HAND / 0 HAND / KNIE (die kleinen Kreise
-  unten sind Knie + Hand zusammen), rechts GAS, BREMSE und STOPPIE.
+  unten sind Knie + Hand zusammen), rechts GAS und BREMSE.
   **BURN** drückt Gas und Bremse zusammen: im Stand halten, bis
   „BREMSE LOS = BOOST!" blinkt, dann den Finger **auf GAS schieben** (nicht loslassen).
-* Am Computer geht auch die Tastatur: X = Gas, C = Bremse, S = Stoppie,
+* Am Computer geht auch die Tastatur: X = Gas, C = Bremse, C + Pfeil hoch = Stoppie,
   Pfeile = Wheelie und Tricks, Enter = Start/Pause.
 
 ## Ausprobieren
