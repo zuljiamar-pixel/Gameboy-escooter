@@ -308,6 +308,9 @@
   canvas.addEventListener('pointerdown', e => {
     e.preventDefault();
     audioInit();
+    try {                                       // Querformat festhalten, wo der Browser das erlaubt
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    } catch (err) { /* egal */ }
     if (e.pointerType !== 'mouse') usedTouch = true;
     const p = toUnits(e);
     pointers.set(e.pointerId, p);
@@ -2107,7 +2110,29 @@
   }
 
   // ---------------- Hauptschleife ----------------
+  function drawRotate() {
+    // Handy steht hochkant: das Spiel geht nur quer
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#101018'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const k = min(canvas.width, canvas.height) / 120, cx = canvas.width / 2 / k, cy = canvas.height / 2 / k;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    const a = sin(min(1, (G.t % 2.4) / 1.2) * PI / 2) * PI / 2;     // Handy dreht sich
+    ctx.save(); ctx.translate(cx, cy - 12); ctx.rotate(-a);
+    ctx.fillStyle = '#ffd23f'; rrect(-11, -19, 22, 38, 3.5); ctx.fill();
+    ctx.fillStyle = '#18244a'; rrect(-9, -15, 18, 30, 1.5); ctx.fill();
+    ctx.restore();
+    text('BITTE HANDY DREHEN', cx, cy + 16, 7, '#ffffff', 1);
+    text('DAS SPIEL GEHT NUR QUER', cx, cy + 26, 4.6, '#9fb4e8', 1, false);
+  }
+
   function step(dt) {
+    if (canvas.height > canvas.width) {          // hochkant: warten, bis das Handy quer ist
+      G.t += clamp(dt, 0, 0.1);
+      keys = 0; taps = [];
+      if (G.state === PLAY) setPause(true);
+      drawRotate();
+      return;
+    }
     G.frames++;
     G.fpsT += dt;
     if (G.fpsT >= 1.0) { G.fps = Math.round(G.frames / G.fpsT); G.frames = 0; G.fpsT = 0; }
