@@ -1,0 +1,58 @@
+name: Android-App bauen
+
+# Baut die Handy-Version (Ordner handy/) als Android-App:
+#   - app-debug.apk   zum direkten Installieren und Ausprobieren
+#   - app-release.aab zum Hochladen in den Google Play Store
+# Die fertigen Dateien stehen danach unter "Actions" -> diesem Lauf -> "Artifacts".
+
+on:
+  push:
+    paths:
+      - 'handy/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Abhängigkeiten installieren
+        run: npm ci
+      - name: Spiel in das Android-Projekt kopieren
+        run: npx cap sync android
+      - name: Schlüssel für den Play Store bereitlegen (falls vorhanden)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          else
+            echo "Kein Schlüssel hinterlegt: die .aab-Datei wird NICHT signiert."
+          fi
+      - name: App bauen
+        working-directory: handy/android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleDebug bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: escooter-wheelie-apk
+          path: handy/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: escooter-wheelie-aab
+          path: handy/android/app/build/outputs/bundle/release/app-release.aab

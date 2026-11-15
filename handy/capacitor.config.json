@@ -1,0 +1,9 @@
+{
+  "appId": "ch.escooter.wheelie",
+  "appName": "E-Scooter Wheelie",
+  "webDir": "www",
+  "backgroundColor": "#101018",
+  "android": {
+    "backgroundColor": "#101018"
+  }
+}

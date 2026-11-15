@@ -117,6 +117,12 @@ Bildschirm laufen, spielt alles durch (Menü, Farben, Wheelie, Tricks, Landen,
 Sturz, Burnout, Boost, Pause, Speichern) und zählt, wie viele Pixel pro Bild
 neu gemalt werden müssen.
 
+## Handy-Version (Android)
+
+Im Ordner [`handy/`](handy/README.md) liegt das Spiel als **Android-App** mit
+Touch-Knöpfen, 3 Scootern, Tuning und schönerer Grafik. Die Physik ist die gleiche
+wie hier. Dort steht auch, wie die App in den Google Play Store kommt.
+
 ## MakeCode-Arcade-Version
 
 Im Ordner [`arcade/`](arcade/README.md) liegt eine frühere, andere Version des
